@@ -6,6 +6,7 @@ from app.models.crawl_config import CrawlConfiguration
 from app.models.crawl_job import CrawlJob
 from app.models.crawl_job_result import CrawlJobResult
 from app.models.crawl_schedule import CrawlSchedule
+from app.models.seed_version import SeedVersion
 
 __all__ = [
     "Base",
@@ -17,4 +18,5 @@ __all__ = [
     "CrawlJob",
     "CrawlJobResult",
     "CrawlSchedule",
+    "SeedVersion",
 ]

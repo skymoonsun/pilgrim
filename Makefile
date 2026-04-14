@@ -4,6 +4,7 @@
 
 .PHONY: help dev dev-build dev-down dev-logs dev-ps \
         migrate migrate-create migrate-downgrade \
+        seed seed-status \
         shell db-shell redis-shell \
         test lint \
         prod prod-build prod-down \
@@ -57,6 +58,15 @@ migrate-downgrade: ## Son migration'ı geri al
 
 migrate-history: ## Migration geçmişini görüntüle
 	$(COMPOSE_DEV) exec api alembic history --verbose
+
+# ── Seeds ────────────────────────────────────────────────────────
+seed: ## Pending seed'leri uygula
+	$(COMPOSE_DEV) exec api python -m app.cli.seed
+
+seed-status: ## Seed durumunu görüntüle
+	$(COMPOSE_DEV) exec api python -m app.cli.seed --status
+
+setup: migrate seed ## Migration + seed'leri sırayla uygula
 
 # ── Shell Access ─────────────────────────────────────────────────
 shell: ## API container'ında Python shell aç
