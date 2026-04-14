@@ -63,7 +63,7 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/pilgrim.git
+git clone https://github.com/skymoonsun/pilgrim.git
 cd pilgrim
 
 # Create the .env file
