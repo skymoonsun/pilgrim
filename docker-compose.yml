@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────
+# Pilgrim — Production Stack
+# PostgreSQL and Redis are external; connect via environment vars.
+# Usage: docker compose up -d --build
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  # ── API ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      target: api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/liveness"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Celery Worker ────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      target: worker
+    env_file: .env
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+  # ── Celery Beat ──────────────────────────────────────────────
+  beat:
+    build:
+      context: ./backend
+      target: worker
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "-l", "info"]
+    env_file: .env
+    restart: unless-stopped
