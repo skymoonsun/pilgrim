@@ -88,6 +88,20 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Frontend (Vite + React + hot reload) ──────────────────
+  frontend:
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:
   redisdata:

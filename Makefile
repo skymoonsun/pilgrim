@@ -46,6 +46,9 @@ dev-ps: ## Çalışan servisleri listele
 dev-restart: ## API servisini yeniden başlat
 	$(COMPOSE_DEV) restart api
 
+dev-logs-frontend: ## Sadece frontend loglarını takip et
+	$(COMPOSE_DEV) logs -f frontend
+
 # ── Database Migrations ──────────────────────────────────────────
 migrate: ## Migration'ları uygula (alembic upgrade head)
 	$(COMPOSE_DEV) exec api alembic upgrade head
