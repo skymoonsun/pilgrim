@@ -62,9 +62,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Install Scrapling fetchers and browser engines
-RUN pip install --no-cache-dir "scrapling[fetchers]" && \
-    scrapling install || true
+# Download browser binaries (pip deps already in builder layer)
+RUN scrapling install || true
 
 CMD ["celery", "-A", "app.workers.celery_app", "worker", \
      "-Q", "crawl_high,crawl_default,crawl_low", \
