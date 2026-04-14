@@ -1,0 +1,988 @@
+---
+paths:
+  - "tests/**/*"
+---
+
+> Claude Code: modular rules in `.claude/rules/` — [Memory & rules](https://code.claude.com/docs/en/memory). Cursor equivalent: `.cursor/rules/testing-guidelines.mdc`.
+
+# Testing Guidelines - Pilgrim Service
+
+FastAPI tests use **async** fixtures and **httpx.AsyncClient**. Crawling runs in **Celery workers** — do not assert Scrapling in API tests unless using **eager** mode or a **worker test** target.
+
+## 1. Test Project Structure
+
+### Test Organization
+```
+tests/
+├── conftest.py                    # Pytest configuration and fixtures
+├── unit/                         # Unit tests
+│   ├── test_services/
+│   │   ├── test_game_service.py
+│   │   ├── test_crawl_service.py
+│   │   └── test_auth_service.py
+│   ├── test_utils/
+│   │   ├── test_price_utils.py
+│   │   └── test_validators.py
+│   └── test_models/
+│       ├── test_game_models.py
+│       └── test_price_models.py
+├── integration/                  # Integration tests
+│   ├── test_api/
+│   │   ├── test_games_endpoints.py
+│   │   ├── test_stores_endpoints.py
+│   │   └── test_auth_endpoints.py
+│   ├── test_database/
+│   │   ├── test_game_repository.py
+│   │   └── test_price_repository.py
+│   └── test_crawling/
+│       ├── test_steam_scraper.py
+│       └── test_epic_scraper.py
+│   ├── test_workers/
+│   │   ├── test_crawl_tasks.py   # Celery task unit tests (mock Scrapling)
+│   │   └── test_beat_enqueue.py
+│   └── test_redis/
+│       └── test_proxy_pool.py
+├── e2e/                          # End-to-end tests
+│   ├── test_crawl_workflow.py
+│   └── test_price_update_flow.py
+└── fixtures/                     # Test data fixtures
+    ├── games.json
+    ├── stores.json
+    └── html_responses/
+        ├── steam_game_page.html
+        └── epic_game_page.html
+```
+
+### Core Test Configuration
+```python
+# File: tests/conftest.py
+import asyncio
+import pytest
+import pytest_asyncio
+from typing import AsyncGenerator, Generator
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.core.config import get_settings
+from app.db.database import get_async_session
+from app.main import app
+from app.models.base import Base
+from tests.utils.test_data import create_test_data
+
+# Test database URL
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest_asyncio.fixture
+async def async_engine():
+    """Create async test database engine."""
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        poolclass=StaticPool,
+        connect_args={
+            "check_same_thread": False,
+        },
+        echo=False,  # Set to True for SQL debugging
+    )
+    
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    yield engine
+    
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    
+    await engine.dispose()
+
+@pytest_asyncio.fixture
+async def async_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Create async test database session."""
+    async_session_maker = sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    
+    async with async_session_maker() as session:
+        yield session
+
+@pytest_asyncio.fixture
+async def async_client(async_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Create async test client with database dependency override."""
+    def get_test_session():
+        return async_session
+    
+    app.dependency_overrides[get_async_session] = get_test_session
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    
+    app.dependency_overrides.clear()
+
+@pytest_asyncio.fixture
+async def test_data(async_session: AsyncSession):
+    """Create test data in the database."""
+    return await create_test_data(async_session)
+```
+
+## 2. Unit Testing Patterns
+
+### Service Layer Testing
+```python
+# File: tests/unit/test_services/test_game_service.py
+import pytest
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
+from decimal import Decimal
+
+from app.services.game_service import GameService, GameNotFoundError
+from app.schemas.game import GameCreate, GameSearchQuery
+from app.models.game import Game
+from tests.utils.factories import GameFactory, GamePriceFactory
+
+class TestGameService:
+    """Test cases for GameService."""
+    
+    @pytest_asyncio.fixture
+    async def game_service(self, async_session):
+        """Create GameService instance with test session."""
+        return GameService(session=async_session)
+    
+    @pytest.fixture
+    def sample_game_data(self):
+        """Sample game data for testing."""
+        return GameCreate(
+            title="Test Game",
+            description="A test game for unit testing",
+            developer="Test Developer",
+            publisher="Test Publisher",
+            steam_app_id=12345
+        )
+    
+    async def test_create_game_success(self, game_service, sample_game_data):
+        """Test successful game creation."""
+        # Act
+        game = await game_service.create_game(sample_game_data)
+        
+        # Assert
+        assert game.title == sample_game_data.title
+        assert game.developer == sample_game_data.developer
+        assert game.steam_app_id == sample_game_data.steam_app_id
+        assert game.id is not None
+        assert game.created_at is not None
+    
+    async def test_create_game_duplicate_steam_id(self, game_service, sample_game_data, test_data):
+        """Test creating game with duplicate Steam ID raises error."""
+        # Arrange - Create a game with same Steam ID
+        existing_game = await GameFactory.create(steam_app_id=sample_game_data.steam_app_id)
+        
+        # Act & Assert
+        with pytest.raises(ValueError, match="Steam App ID already exists"):
+            await game_service.create_game(sample_game_data)
+    
+    async def test_get_game_by_id_success(self, game_service, test_data):
+        """Test successful game retrieval by ID."""
+        # Arrange
+        game_id = test_data["games"][0].id
+        
+        # Act
+        game = await game_service.get_game_by_id(game_id, include_prices=True)
+        
+        # Assert
+        assert game is not None
+        assert game.id == game_id
+        assert hasattr(game, 'prices')  # Prices should be loaded
+    
+    async def test_get_game_by_id_not_found(self, game_service):
+        """Test game not found scenario."""
+        # Arrange
+        non_existent_id = uuid4()
+        
+        # Act & Assert
+        with pytest.raises(GameNotFoundError):
+            await game_service.get_game_by_id(non_existent_id)
+    
+    async def test_search_games_by_title(self, game_service, test_data):
+        """Test game search by title."""
+        # Arrange
+        search_params = GameSearchQuery(search="Test")
+        
+        # Act
+        games, total = await game_service.search_games(
+            search_params=search_params,
+            skip=0,
+            limit=10
+        )
+        
+        # Assert
+        assert total > 0
+        assert len(games) > 0
+        assert all("Test" in game.title for game in games)
+    
+    async def test_search_games_with_price_filter(self, game_service, test_data):
+        """Test game search with price filters."""
+        # Arrange
+        search_params = GameSearchQuery(
+            min_price=10.0,
+            max_price=50.0
+        )
+        
+        # Act
+        games, total = await game_service.search_games(
+            search_params=search_params,
+            skip=0,
+            limit=10
+        )
+        
+        # Assert
+        for game in games:
+            if game.prices:
+                assert any(
+                    Decimal('10.0') <= price.price <= Decimal('50.0') 
+                    for price in game.prices
+                )
+    
+    @patch('app.services.game_service.logger')
+    async def test_create_game_database_error(self, mock_logger, game_service, sample_game_data):
+        """Test game creation with database error."""
+        # Arrange
+        with patch.object(game_service.session, 'commit', side_effect=Exception("DB Error")):
+            # Act & Assert
+            with pytest.raises(Exception):
+                await game_service.create_game(sample_game_data)
+            
+            # Verify rollback was called
+            mock_logger.error.assert_called()
+```
+
+### Utility Function Testing
+```python
+# File: tests/unit/test_utils/test_price_utils.py
+import pytest
+from decimal import Decimal
+from app.utils.price_utils import (
+    clean_price_text, 
+    convert_currency, 
+    calculate_discount_percentage,
+    parse_turkish_price
+)
+
+class TestPriceUtils:
+    """Test cases for price utility functions."""
+    
+    @pytest.mark.parametrize("input_text,expected", [
+        ("$19.99", "19.99"),
+        ("€25,00", "25.00"),
+        ("₺29,99", "29.99"),
+        ("19.99 TL", "19.99"),
+        ("FREE", "0.00"),
+        ("N/A", None),
+        ("", None),
+    ])
+    def test_clean_price_text(self, input_text, expected):
+        """Test price text cleaning with various formats."""
+        result = clean_price_text(input_text)
+        
+        if expected is None:
+            assert result is None
+        else:
+            assert result == Decimal(expected)
+    
+    def test_parse_turkish_price_formats(self):
+        """Test Turkish price format parsing."""
+        test_cases = [
+            ("29,99 ₺", Decimal("29.99")),
+            ("1.299,99 TL", Decimal("1299.99")),
+            ("₺ 45,50", Decimal("45.50")),
+            ("2.500,00 TL", Decimal("2500.00")),
+        ]
+        
+        for input_text, expected in test_cases:
+            result = parse_turkish_price(input_text)
+            assert result == expected
+    
+    def test_calculate_discount_percentage(self):
+        """Test discount percentage calculation."""
+        original = Decimal("100.00")
+        discounted = Decimal("75.00")
+        
+        result = calculate_discount_percentage(original, discounted)
+        
+        assert result == Decimal("25.00")
+    
+    def test_calculate_discount_percentage_no_discount(self):
+        """Test discount calculation when no discount exists."""
+        original = Decimal("50.00")
+        discounted = Decimal("50.00")
+        
+        result = calculate_discount_percentage(original, discounted)
+        
+        assert result == Decimal("0.00")
+    
+    async def test_convert_currency_success(self):
+        """Test currency conversion with mocked exchange rates."""
+        with patch('app.utils.price_utils.get_exchange_rate') as mock_rate:
+            mock_rate.return_value = Decimal("0.85")
+            
+            result = await convert_currency(
+                amount=Decimal("100.00"),
+                from_currency="USD",
+                to_currency="EUR"
+            )
+            
+            assert result == Decimal("85.00")
+```
+
+## 3. Integration Testing
+
+### API Endpoint Testing
+```python
+# File: tests/integration/test_api/test_games_endpoints.py
+import pytest
+from httpx import AsyncClient
+from fastapi import status
+from uuid import uuid4
+
+from tests.utils.auth import create_test_token
+
+class TestGamesAPI:
+    """Integration tests for Games API endpoints."""
+    
+    @pytest.fixture
+    def auth_headers(self):
+        """Create authentication headers for tests."""
+        token = create_test_token(user_id="test-user", permissions=["read", "write"])
+        return {"Authorization": f"Bearer {token}"}
+    
+    @pytest.fixture
+    def admin_headers(self):
+        """Create admin authentication headers."""
+        token = create_test_token(user_id="admin-user", permissions=["admin"])
+        return {"Authorization": f"Bearer {token}"}
+    
+    async def test_get_games_success(self, async_client: AsyncClient, test_data):
+        """Test successful games retrieval."""
+        response = await async_client.get("/api/v1/games/")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        assert "items" in data
+        assert "total" in data
+        assert "page" in data
+        assert len(data["items"]) > 0
+    
+    async def test_get_games_with_filters(self, async_client: AsyncClient, test_data):
+        """Test games retrieval with search filters."""
+        response = await async_client.get(
+            "/api/v1/games/",
+            params={
+                "search": "Test",
+                "min_price": 10.0,
+                "max_price": 50.0
+            }
+        )
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        for game in data["items"]:
+            assert "Test" in game["title"]
+    
+    async def test_get_game_by_id_success(self, async_client: AsyncClient, test_data):
+        """Test successful game retrieval by ID."""
+        game_id = str(test_data["games"][0].id)
+        
+        response = await async_client.get(f"/api/v1/games/{game_id}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        
+        assert data["id"] == game_id
+        assert "title" in data
+        assert "created_at" in data
+    
+    async def test_get_game_by_id_not_found(self, async_client: AsyncClient):
+        """Test game not found response."""
+        non_existent_id = str(uuid4())
+        
+        response = await async_client.get(f"/api/v1/games/{non_existent_id}")
+        
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        data = response.json()
+        
+        assert data["error"]["code"] == "GAME_NOT_FOUND"
+    
+    async def test_create_game_success(self, async_client: AsyncClient, auth_headers):
+        """Test successful game creation."""
+        game_data = {
+            "title": "New Test Game",
+            "description": "A new game for testing",
+            "developer": "Test Developer",
+            "steam_app_id": 99999
+        }
+        
+        response = await async_client.post(
+            "/api/v1/games/",
+            json=game_data,
+            headers=auth_headers
+        )
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        
+        assert data["title"] == game_data["title"]
+        assert data["steam_app_id"] == game_data["steam_app_id"]
+        assert "id" in data
+    
+    async def test_create_game_unauthorized(self, async_client: AsyncClient):
+        """Test game creation without authentication."""
+        game_data = {
+            "title": "Unauthorized Game",
+            "developer": "Test Developer"
+        }
+        
+        response = await async_client.post("/api/v1/games/", json=game_data)
+        
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    
+    async def test_create_game_validation_error(self, async_client: AsyncClient, auth_headers):
+        """Test game creation with invalid data."""
+        invalid_data = {
+            "title": "",  # Empty title should fail validation
+            "steam_app_id": "not-a-number"  # Invalid type
+        }
+        
+        response = await async_client.post(
+            "/api/v1/games/",
+            json=invalid_data,
+            headers=auth_headers
+        )
+        
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        data = response.json()
+        
+        assert data["error"]["code"] == "VALIDATION_ERROR"
+        assert "details" in data["error"]
+    
+    async def test_delete_game_admin_only(self, async_client: AsyncClient, admin_headers, test_data):
+        """Test game deletion requires admin permissions."""
+        game_id = str(test_data["games"][0].id)
+        
+        response = await async_client.delete(
+            f"/api/v1/games/{game_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        
+        # Verify game is deleted
+        get_response = await async_client.get(f"/api/v1/games/{game_id}")
+        assert get_response.status_code == status.HTTP_404_NOT_FOUND
+```
+
+### Database Integration Testing
+```python
+# File: tests/integration/test_database/test_game_repository.py
+import pytest
+from sqlalchemy import select
+from app.models.game import Game
+from app.models.price import GamePrice
+from tests.utils.factories import GameFactory, GamePriceFactory
+
+class TestGameRepository:
+    """Integration tests for game database operations."""
+    
+    async def test_game_creation_with_relationships(self, async_session):
+        """Test creating game with related prices."""
+        # Create game
+        game = await GameFactory.create(session=async_session)
+        
+        # Create related prices
+        price1 = await GamePriceFactory.create(
+            session=async_session,
+            game_id=game.id,
+            store_id=1,
+            price=Decimal("19.99")
+        )
+        price2 = await GamePriceFactory.create(
+            session=async_session,
+            game_id=game.id,
+            store_id=2,
+            price=Decimal("24.99")
+        )
+        
+        await async_session.commit()
+        
+        # Verify relationships
+        result = await async_session.execute(
+            select(Game).where(Game.id == game.id)
+        )
+        retrieved_game = result.scalar_one()
+        
+        assert len(retrieved_game.prices) == 2
+        assert retrieved_game.prices[0].price in [Decimal("19.99"), Decimal("24.99")]
+    
+    async def test_game_search_performance(self, async_session, test_data):
+        """Test game search query performance."""
+        import time
+        
+        start_time = time.time()
+        
+        # Execute complex search query
+        result = await async_session.execute(
+            select(Game)
+            .join(GamePrice)
+            .where(
+                Game.title.ilike("%Test%"),
+                GamePrice.price < Decimal("50.00"),
+                GamePrice.in_stock == True
+            )
+            .limit(10)
+        )
+        
+        games = result.scalars().all()
+        execution_time = time.time() - start_time
+        
+        # Performance assertion (should complete within 100ms)
+        assert execution_time < 0.1
+        assert len(games) >= 0  # Verify query executes successfully
+    
+    async def test_cascade_delete(self, async_session):
+        """Test that deleting game cascades to prices."""
+        # Create game with prices
+        game = await GameFactory.create(session=async_session)
+        price = await GamePriceFactory.create(
+            session=async_session,
+            game_id=game.id
+        )
+        
+        await async_session.commit()
+        
+        # Delete game
+        await async_session.delete(game)
+        await async_session.commit()
+        
+        # Verify price is also deleted
+        result = await async_session.execute(
+            select(GamePrice).where(GamePrice.id == price.id)
+        )
+        assert result.scalar_one_or_none() is None
+```
+
+## 4. External Service Mocking
+
+### HTTP Mocking for Scraping
+```python
+# File: tests/integration/test_crawling/test_steam_scraper.py
+import pytest
+from unittest.mock import patch, AsyncMock
+import httpx
+from httpx import Response
+
+from app.services.crawl_service import SteamScraper
+from tests.fixtures.html_responses import STEAM_GAME_PAGE_HTML
+
+class TestSteamScraper:
+    """Test Steam scraping functionality with mocked HTTP responses."""
+    
+    @pytest.fixture
+    def steam_scraper(self):
+        """Create SteamScraper instance."""
+        return SteamScraper()
+    
+    @pytest.fixture
+    def mock_steam_response(self):
+        """Mock Steam page response."""
+        return STEAM_GAME_PAGE_HTML
+    
+    async def test_scrape_steam_game_success(self, steam_scraper, mock_steam_response):
+        """Test successful Steam game scraping."""
+        with patch('httpx.AsyncClient.get') as mock_get:
+            # Setup mock response
+            mock_response = AsyncMock(spec=Response)
+            mock_response.text = mock_steam_response
+            mock_response.url.path = "/app/123456"
+            mock_response.status_code = 200
+            mock_get.return_value = mock_response
+            
+            # Execute scraping
+            result = await steam_scraper.scrape_game_page(
+                "https://store.steampowered.com/app/123456"
+            )
+            
+            # Verify results
+            assert result.title == "Test Game"
+            assert result.price == Decimal("19.99")
+            assert result.currency == "USD"
+            assert result.in_stock is True
+            
+            # Verify HTTP call was made
+            mock_get.assert_called_once()
+    
+    async def test_scrape_steam_age_verification(self, steam_scraper):
+        """Test Steam age verification handling."""
+        with patch('httpx.AsyncClient.get') as mock_get, \
+             patch('httpx.AsyncClient.post') as mock_post:
+            
+            # First response - age verification
+            age_response = AsyncMock(spec=Response)
+            age_response.url.path = "/agecheck/app/123456"
+            age_response.text = "<html>Age verification required</html>"
+            
+            # Second response - actual game page
+            game_response = AsyncMock(spec=Response)
+            game_response.url.path = "/app/123456"
+            game_response.text = STEAM_GAME_PAGE_HTML
+            
+            mock_get.side_effect = [age_response, game_response]
+            mock_post.return_value = AsyncMock()
+            
+            # Execute scraping
+            result = await steam_scraper.scrape_game_page(
+                "https://store.steampowered.com/app/123456"
+            )
+            
+            # Verify age verification was handled
+            assert mock_post.called
+            assert result.title == "Test Game"
+    
+    async def test_scrape_steam_rate_limited(self, steam_scraper):
+        """Test handling of rate limiting."""
+        with patch('httpx.AsyncClient.get') as mock_get:
+            # Setup rate limit response
+            mock_response = AsyncMock(spec=Response)
+            mock_response.status_code = 429
+            mock_response.headers = {"Retry-After": "60"}
+            mock_get.side_effect = httpx.HTTPStatusError(
+                "Rate limited", 
+                request=AsyncMock(), 
+                response=mock_response
+            )
+            
+            # Execute and verify exception
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await steam_scraper.scrape_game_page(
+                    "https://store.steampowered.com/app/123456"
+                )
+            
+            assert exc_info.value.response.status_code == 429
+```
+
+### Database Transaction Testing
+```python
+# File: tests/integration/test_database/test_transactions.py
+import pytest
+from sqlalchemy.exc import IntegrityError
+from app.services.game_service import GameService
+from app.schemas.game import GameCreate
+
+class TestDatabaseTransactions:
+    """Test database transaction handling."""
+    
+    async def test_rollback_on_constraint_violation(self, async_session):
+        """Test that transactions rollback on constraint violations."""
+        game_service = GameService(async_session)
+        
+        # Create first game
+        game_data1 = GameCreate(
+            title="Test Game 1",
+            steam_app_id=12345
+        )
+        await game_service.create_game(game_data1)
+        
+        # Try to create second game with same Steam ID
+        game_data2 = GameCreate(
+            title="Test Game 2",
+            steam_app_id=12345  # Duplicate Steam ID
+        )
+        
+        # Should raise constraint violation
+        with pytest.raises(ValueError):
+            await game_service.create_game(game_data2)
+        
+        # Verify session is still usable
+        game_data3 = GameCreate(
+            title="Test Game 3",
+            steam_app_id=54321  # Different Steam ID
+        )
+        
+        # This should succeed
+        game3 = await game_service.create_game(game_data3)
+        assert game3.title == "Test Game 3"
+```
+
+## 5. End-to-End Testing
+
+### Full Workflow Testing
+```python
+# File: tests/e2e/test_crawl_workflow.py
+import pytest
+from unittest.mock import patch
+from httpx import AsyncClient
+
+from tests.utils.mock_responses import MockHTTPResponses
+
+class TestCrawlWorkflow:
+    """End-to-end tests for crawling workflow."""
+    
+    @pytest.fixture
+    def mock_responses(self):
+        """Setup mock HTTP responses for different stores."""
+        return MockHTTPResponses()
+    
+    async def test_complete_crawl_workflow(
+        self, 
+        async_client: AsyncClient, 
+        admin_headers, 
+        test_data,
+        mock_responses
+    ):
+        """Test complete crawling workflow from trigger to completion."""
+        
+        # Step 1: Trigger crawl job
+        crawl_request = {
+            "store_ids": [1, 2],
+            "game_urls": [
+                "https://store.steampowered.com/app/123456",
+                "https://www.epicgames.com/store/game/test-game"
+            ]
+        }
+        
+        with patch('httpx.AsyncClient.get', side_effect=mock_responses.get_response):
+            response = await async_client.post(
+                "/api/v1/crawl/trigger",
+                json=crawl_request,
+                headers=admin_headers
+            )
+        
+        assert response.status_code == 202
+        job_data = response.json()
+        job_id = job_data["job_id"]
+        
+        # Step 2: Check job status
+        status_response = await async_client.get(
+            f"/api/v1/crawl/jobs/{job_id}",
+            headers=admin_headers
+        )
+        
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        assert status_data["status"] in ["running", "completed"]
+        
+        # Step 3: Verify prices were updated
+        games_response = await async_client.get("/api/v1/games/")
+        games_data = games_response.json()
+        
+        # Verify at least one game has updated prices
+        updated_games = [
+            game for game in games_data["items"] 
+            if game.get("last_price_update") is not None
+        ]
+        assert len(updated_games) > 0
+```
+
+## 6. Test Utilities and Factories
+
+### Test Data Factories
+```python
+# File: tests/utils/factories.py
+import factory
+from decimal import Decimal
+from datetime import datetime
+from factory import Faker, LazyAttribute
+from app.models.game import Game
+from app.models.price import GamePrice
+from app.models.store import Store
+
+class GameFactory(factory.Factory):
+    """Factory for creating test games."""
+    
+    class Meta:
+        model = Game
+    
+    title = Faker('name')
+    description = Faker('text', max_nb_chars=200)
+    developer = Faker('company')
+    publisher = Faker('company')
+    steam_app_id = Faker('random_int', min=100000, max=999999)
+    is_active = True
+    quality_score = Decimal('0.85')
+    
+    @classmethod
+    async def create(cls, session=None, **kwargs):
+        """Create and save game to database."""
+        game = cls.build(**kwargs)
+        if session:
+            session.add(game)
+            await session.commit()
+            await session.refresh(game)
+        return game
+
+class StoreFactory(factory.Factory):
+    """Factory for creating test stores."""
+    
+    class Meta:
+        model = Store
+    
+    name = Faker('company')
+    display_name = LazyAttribute(lambda obj: obj.name)
+    base_url = Faker('url')
+    is_active = True
+    store_type = 'web'
+    max_requests_per_hour = 100
+    min_delay_seconds = Decimal('1.0')
+    
+    @classmethod
+    async def create(cls, session=None, **kwargs):
+        """Create and save store to database."""
+        store = cls.build(**kwargs)
+        if session:
+            session.add(store)
+            await session.commit()
+            await session.refresh(store)
+        return store
+
+class GamePriceFactory(factory.Factory):
+    """Factory for creating test game prices."""
+    
+    class Meta:
+        model = GamePrice
+    
+    price = Faker('pydecimal', left_digits=3, right_digits=2, positive=True)
+    currency_id = 1  # Default to USD
+    in_stock = True
+    product_url = Faker('url')
+    is_stale = False
+    
+    @classmethod
+    async def create(cls, session=None, **kwargs):
+        """Create and save game price to database."""
+        price = cls.build(**kwargs)
+        if session:
+            session.add(price)
+            await session.commit()
+            await session.refresh(price)
+        return price
+```
+
+### Mock Response Utilities
+```python
+# File: tests/utils/mock_responses.py
+from typing import Dict, Any
+import json
+
+class MockHTTPResponses:
+    """Utility for managing mock HTTP responses."""
+    
+    def __init__(self):
+        self.responses = {
+            "store.steampowered.com": self._steam_response,
+            "epicgames.com": self._epic_response,
+        }
+    
+    def get_response(self, url: str) -> Dict[str, Any]:
+        """Get mock response for URL."""
+        for domain, response_func in self.responses.items():
+            if domain in url:
+                return response_func(url)
+        
+        # Default response
+        return {
+            "status_code": 404,
+            "text": "<html>Not Found</html>"
+        }
+    
+    def _steam_response(self, url: str) -> Dict[str, Any]:
+        """Mock Steam response."""
+        return {
+            "status_code": 200,
+            "text": """
+                <html>
+                    <div class="game_purchase_price">$19.99</div>
+                    <div class="apphub_AppName">Test Game</div>
+                    <div class="discount_percent">-25%</div>
+                </html>
+            """
+        }
+    
+    def _epic_response(self, url: str) -> Dict[str, Any]:
+        """Mock Epic Games response."""
+        return {
+            "status_code": 200,
+            "text": """
+                <html>
+                    <div data-testid="price-display">€24.99</div>
+                    <h1 data-testid="hero-title">Epic Test Game</h1>
+                </html>
+            """
+        }
+```
+
+## 7. Celery, Redis, Scrapling, and Docker Compose
+
+### Celery tasks (unit-level)
+- Prefer **`task_always_eager=True`** in a `pytest` settings profile so `apply_async` runs the body in-process (good for service logic that enqueues then returns 202).
+- For **isolated** task tests, patch **`apply_async`** or the task’s **`run`** method and assert call args (`queue`, `args`, `kwargs`).
+- Use **`CELERY_TASK_EAGER_PROPAGATES = True`** so exceptions fail the test.
+- Do not share a real Redis broker between parallel `pytest-xdist` workers unless each worker uses a **distinct DB index** or **key prefix**.
+
+```python
+# tests/unit/test_workers/test_crawl_tasks.py
+from unittest.mock import MagicMock
+import pytest
+
+from app.workers.tasks.scrape import run_crawl_job
+
+
+@pytest.fixture
+def celery_eager_app():
+    from app.workers.celery_app import celery_app
+
+    celery_app.conf.update(task_always_eager=True, task_eager_propagates=True)
+    yield celery_app
+
+
+def test_run_crawl_job_invokes_pipeline(celery_eager_app, monkeypatch):
+    monkeypatch.setattr(
+        "app.workers.tasks.scrape.execute_crawl_pipeline",
+        MagicMock(return_value={"ok": True}),
+    )
+    run_crawl_job.apply(args=["00000000-0000-0000-0000-000000000001"])
+```
+
+### Redis
+- **Unit tests:** `fakeredis` async API to test cache/proxy pool helpers without a server.
+- **Integration:** real Redis from **Docker Compose** or **testcontainers**.
+
+```python
+# tests/conftest.py (optional)
+import pytest_asyncio
+from fakeredis import aioredis as fake_aioredis
+
+
+@pytest_asyncio.fixture
+async def fake_redis():
+    redis = fake_aioredis.FakeRedis()
+    yield redis
+    await redis.flushall()
+```
+
+### Scrapling / fetchers
+- Mock at the **boundary**: patch what the worker calls (e.g. fetcher `get` / session `fetch`) and return fixture HTML/JSON from `tests/fixtures/html_responses/`.
+- Assert **parsed output**, not full HTML equality.
+- **Playwright:** `pytest-playwright` or `@pytest.mark.integration` in CI with browsers installed.
+
+### Docker Compose integration tests
+- Mark **`@pytest.mark.integration`**; default run: `pytest -m "not integration"`.
+- CI: `docker compose -f docker-compose.yml -f docker-compose.test.yml up -d`, then `pytest -m integration` with URLs pointing at compose services.
+- **Health:** wait for Postgres + Redis (optional Celery **inspect ping**) before tests.
+
+Use **section 7** together with **sections 3–5** so API tests stay fast while workers and Scrapling stay verifiable in CI.

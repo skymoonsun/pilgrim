@@ -1,0 +1,296 @@
+---
+trigger: glob
+globs: "app/crawlers/**/*"
+description: "Pilgrim service: scraping-strategies — segment 1/1. Mirrors .cursor/rules/scraping-strategies.mdc."
+---
+
+# Pilgrim — scraping strategies
+
+> Antigravity workspace rule. Canonical copy: `.cursor/rules/scraping-strategies.mdc`.
+
+# Scraping Strategies - Pilgrim Service
+
+Pilgrim uses **[Scrapling](https://github.com/D4Vinci/Scrapling)** as the primary stack for fetching and parsing. Use **Playwright** only when Pilgrim needs explicit browser automation outside Scrapling’s `DynamicFetcher` / `AsyncDynamicSession`, or for thin integration tests.
+
+## 1. Technology choice matrix
+
+| Scenario | Primary tool | Notes |
+|----------|--------------|--------|
+| Static / server-rendered HTML | `Fetcher` / `FetcherSession` | TLS impersonation, HTTP/3 optional; fastest path |
+| Light anti-bot / headers | `FetcherSession(..., stealthy_headers=True)` | Prefer Scrapling before custom hacks |
+| Cloudflare / Turnstile / heavy anti-bot | `StealthyFetcher` / `AsyncStealthySession` | `solve_cloudflare` when config allows |
+| Full JS / SPA | `DynamicFetcher` / `AsyncDynamicSession` | Playwright-backed inside Scrapling |
+| Large crawl / many URLs | `scrapling.spiders.Spider` | Concurrency, throttling, optional pause/resume |
+| Official API available | `httpx` in a dedicated client | Fastest and most stable when ToS allows |
+
+**Do not** default to BeautifulSoup or Selenium in new code; parse HTML with Scrapling’s response/selector API or `scrapling.parser.Selector`.
+
+## 2. Installation and dependencies
+
+- Parser only: `pip install scrapling`
+- Fetchers + browsers: `pip install "scrapling[fetchers]"` then run `scrapling install` (or use the official Docker image in worker containers).
+- Document optional extras (`[ai]`, `[shell]`, `[all]`) in README; keep production images minimal.
+
+## 3. High-level request flow (service layer)
+
+```python
+# Conceptual pipeline — implement in app/services/scrape_pipeline.py (or similar)
+async def run_scrape_for_target(
+    *,
+    crawl_config: CrawlConfigDTO,
+    url: str,
+    rate_limiter: RateLimiterPort,
+) -> ScrapeOutcome:
+    await rate_limiter.acquire(crawl_config.store_id, crawl_config.domain)
+    fetcher = scrapling_factory.create(crawl_config.scraper_profile)
+    response = await fetcher.fetch(url, options=crawl_config.fetch_options)
+    extracted = extraction_service.extract(response, crawl_config.extraction_spec)
+    return validation_service.validate_and_normalize(extracted)
+```
+
+- Keep **fetch**, **extract**, and **validate** in separate modules for testing.
+- Persist raw HTML only when policy allows (PII, size, retention).
+
+## 4. Fetcher profiles (map to DB `scraper_type`)
+
+Standard enum-style values for `CrawlConfiguration` (see database-design rule):
+
+| Profile | Scrapling API | Typical use |
+|---------|---------------|-------------|
+| `http` | `Fetcher`, `FetcherSession` | Static pages |
+| `http_session` | `FetcherSession(impersonate="chrome", ...)` | Cookie / session reuse |
+| `stealth` | `StealthyFetcher`, `AsyncStealthySession` | Hard anti-bot |
+| `dynamic` | `DynamicFetcher`, `AsyncDynamicSession` | Heavy JS |
+| `spider` | `Spider` subclass | Multi-URL crawls |
+
+### 4.1 HTTP (sync-style one-off)
+
+```python
+from scrapling.fetchers import Fetcher
+
+page = Fetcher.get("https://example.com/")
+titles = page.css("h1::text").getall()
+```
+
+### 4.2 Session with TLS impersonation
+
+```python
+from scrapling.fetchers import FetcherSession
+
+with FetcherSession(impersonate="chrome") as session:
+    page = session.get("https://example.com/", stealthy_headers=True)
+    items = page.css(".item").getall()
+```
+
+### 4.3 Async stealth (worker-friendly)
+
+```python
+import asyncio
+from scrapling.fetchers import AsyncStealthySession
+
+async def fetch_protected(url: str) -> object:
+    async with AsyncStealthySession(headless=True, solve_cloudflare=True) as session:
+        return await session.fetch(url)
+```
+
+### 4.4 Dynamic (Playwright inside Scrapling)
+
+```python
+from scrapling.fetchers import AsyncDynamicSession
+
+async def fetch_spa(url: str) -> object:
+    async with AsyncDynamicSession(
+        headless=True,
+        network_idle=True,
+    ) as session:
+        page = await session.fetch(url, load_dom=False)
+        return page.css(".price::text").get()
+```
+
+## 5. Adaptive parsing
+
+- Use **`auto_save=True`** on selectors when training stable extraction paths for a site.
+- Use **`adaptive=True`** when re-running after DOM changes (feature-flag per config).
+- Prefer **CSS / XPath** consistent with Scrapling docs; chain selectors like Scrapy/Parsel.
+
+```python
+# Illustrative — tune per site
+products = page.css(".product", auto_save=True)
+# After layout change:
+products = page.css(".product", adaptive=True)
+```
+
+## 6. Spiders and Pilgrim integration
+
+- For **batch crawls**, implement spiders under `app/crawlers/spiders/` with one class per major flow.
+- **Do not** run `Spider().start()` from FastAPI request handlers; enqueue a **Celery task** that runs the spider or streams results.
+- Use **per-domain concurrency** and **download delay** from `CrawlConfiguration` / store limits.
+- Optional **`robots_txt_obey`**: default `True` unless product explicitly allows opting out and legal review is done.
+
+```python
+from scrapling.spiders import Spider, Request, Response
+
+class ExampleSpider(Spider):
+    name = "example"
+    start_urls = ["https://example.com/"]
+    concurrent_requests = 10
+
+    async def parse(self, response: Response):
+        for row in response.css(".row"):
+            yield {"title": row.css("h2::text").get()}
+        nxt = response.css(".next a")
+        if nxt:
+            yield response.follow(nxt[0].attrib["href"])
+```
+
+## 7. Multi-session spiders
+
+Route “easy” URLs through HTTP session and “protected” URLs through stealth session:
+
+```python
+from scrapling.spiders import Spider, Request, Response
+from scrapling.fetchers import FetcherSession, AsyncStealthySession
+
+class HybridSpider(Spider):
+    name = "hybrid"
+    start_urls = ["https://example.com/"]
+
+    def configure_sessions(self, manager) -> None:
+        manager.add("fast", FetcherSession(impersonate="chrome"))
+        manager.add("stealth", AsyncStealthySession(headless=True), lazy=True)
+
+    async def parse(self, response: Response):
+        for href in response.css("a::attr(href)").getall():
+            sid = "stealth" if "billing" in href else "fast"
+            yield Request(href, sid=sid, callback=self.parse)
+```
+
+## 8. Proxy rotation
+
+- Prefer Scrapling’s **ProxyRotator** and per-request overrides when using fetchers/sessions.
+- For **shared proxy pools** across workers, store proxy list / health in **PostgreSQL** and cache **current index or lease** in **Redis** (see celery-scheduler / architecture rules).
+- Never log full proxy credentials; redact in structured logs.
+
+```python
+# Conceptual — align with scrapling.proxy API in your version
+# rotator = ProxyRotator.from_urls(urls, strategy="round_robin")
+# session.fetch(url, proxy=rotator.next())
+```
+
+## 9. Rate limiting and politeness
+
+- Combine **store-level** `min_delay_seconds` / `max_requests_per_hour` with **per-domain** spider throttling.
+- On **429**, respect `Retry-After`; backoff exponentially in the task layer (Celery `autoretry_for` + custom delay).
+- Add **jitter** to delays to avoid synchronized worker spikes.
+
+## 10. Playwright fallback (outside Scrapling)
+
+Use **only** when:
+
+- You need **Playwright-specific** features not exposed by `DynamicFetcher`, or
+- Scrapling version in use cannot satisfy a documented requirement.
+
+Place code in `app/crawlers/playwright/` with:
+
+- One **`async` entry** function per use case.
+- **Browser lifecycle** in async context managers; strict **timeouts**.
+- **No** headful browsers in API containers — workers only.
+
+```python
+from playwright.async_api import async_playwright
+
+async def fetch_with_playwright(url: str) -> str:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url, wait_until="networkidle", timeout=60_000)
+        html = await page.content()
+        await browser.close()
+        return html
+```
+
+Feed HTML into **`scrapling.parser.Selector(html)`** for unified extraction when possible.
+
+## 10a. Site-specific patterns (Scrapling)
+
+Keep selectors and cookies in **`CrawlConfiguration.extraction_spec` / `fetch_options`**; workers only interpret JSON. Below are **reference** patterns—tune per target.
+
+### Steam (age gate + static HTML)
+
+```python
+from scrapling.fetchers import FetcherSession
+
+def fetch_steam_store_page(steam_url: str) -> object:
+    with FetcherSession(impersonate="chrome") as session:
+        session.cookies.set("birthtime", "568022401", domain="store.steampowered.com")
+        session.cookies.set("lastagecheckage", "1-0-1988", domain="store.steampowered.com")
+        page = session.get(steam_url, stealthy_headers=True)
+        return page  # .css(".game_purchase_price ::text"), etc.
+```
+
+### Heavy JS storefront (e.g. Epic-style)
+
+```python
+from scrapling.fetchers import AsyncDynamicSession
+
+async def fetch_js_heavy_store(url: str) -> object:
+    async with AsyncDynamicSession(headless=True, network_idle=True) as session:
+        page = await session.fetch(url)
+        return page  # Prefer data-testid / stable attributes in extraction_spec
+```
+
+### Turkish and EU price text (post-parse)
+
+Normalize in **`extraction_spec` post-processors** or a shared util—do not hand-roll BeautifulSoup trees; use Scrapling text nodes then regex/Decimal:
+
+```python
+import re
+from decimal import Decimal, InvalidOperation
+
+_TL_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})")
+
+def parse_try_price(text: str) -> Decimal | None:
+    m = _TL_RE.search(text.replace("₺", " ").replace("TL", " "))
+    if not m:
+        return None
+    normalized = m.group(1).replace(".", "").replace(",", ".")
+    try:
+        return Decimal(normalized)
+    except InvalidOperation:
+        return None
+```
+
+## 11. Error handling and classification
+
+Map errors to **retryable** vs **terminal** for Celery:
+
+| Signal | Retry? | Action |
+|--------|--------|--------|
+| HTTP 404 | Usually no | Mark target gone / stale |
+| HTTP 429 | Yes | Honor `Retry-After`, reduce concurrency |
+| HTTP 5xx | Yes | Backoff |
+| Timeout | Yes | Increase timeout or switch profile |
+| Anti-bot block page | Yes | Switch to `stealth` / proxy |
+| Parse miss (empty CSS) | Maybe | `adaptive=True` once, then alert |
+
+## 12. Security and compliance
+
+- Respect **robots.txt** and site **Terms of Service** unless explicitly waived for a legal use case.
+- Document **data retention** for stored HTML / screenshots.
+- Do not disable **TLS verification** in production.
+
+## 13. Observability
+
+- Structured logs: `url` (truncated), `store_id`, `crawl_job_id`, `scraper_profile`, `duration_ms`, `http_status`, `proxy_id` (hashed).
+- Metrics: success rate, latency p95, block rate, parse null rate per config.
+
+## 14. Checklist (new scrape path)
+
+- [ ] Correct Scrapling profile chosen for the site class
+- [ ] Rate limits and robots policy set
+- [ ] Extraction spec versioned in DB / config
+- [ ] Adaptive path behind feature flag
+- [ ] Celery task retries aligned with error table
+- [ ] Tests use **recorded HTML** or mocks — no live network in unit tests
+
+This guideline keeps Pilgrim aligned with Scrapling’s fetchers, spiders, and adaptive parsing while reserving raw Playwright for narrow gaps.

@@ -1,0 +1,230 @@
+---
+applyIntelligently: true
+description: "Docker-first local and deploy: Compose services (API, worker, beat, Redis, Postgres, Flower), Dockerfile patterns, dev workflow (exec/run), healthchecks, volumes, overrides."
+---
+
+# Docker Infrastructure - Pilgrim Service
+
+Pilgrim targets **Docker Compose** for local and small production deployments: **api**, **worker**, **beat**, **postgres**, **redis**, optional **flower**. Scrapling browser dependencies belong in **worker** images, not the API.
+
+**Local default:** run the stack **only inside Docker** (see [§11](#11-docker-first-development-mandatory-for-this-project)). Do not assume host-installed Python, Postgres, or Redis for day-to-day work unless a doc explicitly allows an exception.
+
+## 1. Service list
+
+| Service | Image / build | Purpose |
+|---------|----------------|---------|
+| `api` | `Dockerfile` target `api` | FastAPI + uvicorn/gunicorn |
+| `worker` | `Dockerfile` target `worker` | Celery worker, Scrapling + browsers |
+| `beat` | same as worker image, different cmd | Celery beat |
+| `postgres` | `postgres:16` (or pin minor) | Primary datastore |
+| `redis` | `redis:7` | Broker + cache + result backend |
+| `flower` | official or slim | Ops UI (protected) |
+
+## 2. Multi-stage Dockerfile (pattern)
+
+```dockerfile
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim AS base
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+
+FROM base AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml README.md ./
+COPY app ./app
+# install deps into virtualenv or uv layout
+
+FROM base AS api
+COPY --from=builder /app /app
+RUN pip install .  # or uv sync --no-dev
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM base AS worker
+# Add Chromium/system libs required by scrapling install
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates fonts-liberation libnss3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app /app
+RUN pip install ".[fetchers]" && scrapling install
+CMD ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "crawl_high,crawl_default,crawl_low", "--concurrency=2"]
+```
+
+- **API stage**: minimal OS packages; **no** browser.
+- **Worker stage**: full fetcher stack; pin versions in `pyproject.toml`.
+
+## 3. Compose skeleton
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pilgrim
+      POSTGRES_PASSWORD: pilgrim
+      POSTGRES_DB: pilgrim
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilgrim"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      target: api
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: .
+      target: worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+  beat:
+    build:
+      context: .
+      target: worker
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "-l", "info"]
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  flower:
+    build:
+      context: .
+      target: worker
+    command: ["celery", "-A", "app.workers.celery_app", "flower"]
+    env_file: .env
+    profiles: ["ops"]
+    ports:
+      - "5555:5555"
+
+volumes:
+  pgdata:
+  redisdata:
+```
+
+## 4. Networks
+
+- Default **bridge** is fine for Compose; use an internal network only if you add edge proxy.
+- Do not publish **Redis** or **Postgres** ports in production Compose; use internal DNS names.
+
+## 5. Volumes
+
+- **postgres**: named volume `pgdata`.
+- **redis**: `redisdata` if AOF/RDB persistence needed.
+- **scrapling cache** (optional): bind mount for dev only; avoid in prod unless encrypted.
+
+## 6. Environment files
+
+- `.env` for local; `.env.production` referenced in server docs only (not committed).
+- Same variables for api/worker/beat; worker may add `PLAYWRIGHT_*` / `SCRAPLING_*`.
+
+## 7. Health checks
+
+- **API**: `GET /health/live` and `GET /health/ready` (DB + Redis ping).
+- **Worker**: Celery `inspect ping` from sidecar script optional; at minimum rely on restart policy + Flower.
+
+## 8. Overrides
+
+- `docker-compose.override.yml` (gitignored): mount source for hot reload, expose extra ports.
+- `docker-compose.prod.yml`: remove volume mounts, add resource limits, secrets.
+
+## 9. Scaling
+
+- `docker compose up -d --scale worker=3` for workers; ensure **Postgres max connections** ≥ pooled workers.
+- Prefer **one beat** instance globally.
+
+## 10. Checklist
+
+- [ ] API image slim; worker image includes browsers
+- [ ] Healthchecks for Postgres + Redis
+- [ ] Flower behind profile or auth
+- [ ] No secrets in image layers
+- [ ] Resource limits on workers
+
+## 11. Docker-first development (mandatory for this project)
+
+Treat **Compose** as the canonical runtime for local development. Host OS only needs **Docker** (Desktop or Engine) + **Compose v2**.
+
+### Principles
+
+- **Single source of truth for URLs inside the stack:** use service DNS names (`postgres`, `redis`), not `localhost`, in `.env` values consumed by containers (e.g. `DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/pilgrim`, `REDIS_URL=redis://redis:6379/0`).
+- **Migrations, seeds, pytest, Alembic, and one-off scripts** run via `docker compose run` or `docker compose exec` against the **api** (or a dedicated **cli** service) image — not `python` on the host unless documented.
+- **Scrapling / Playwright** runs in the **worker** image only; the API container stays slim.
+- **Hot reload in dev:** use `docker-compose.override.yml` (gitignored) to bind-mount `./app` and switch the API command to `uvicorn ... --reload` (see §8).
+
+### Daily commands (examples)
+
+```bash
+# Build and start full stack
+docker compose up -d --build
+
+# Logs (follow)
+docker compose logs -f api worker
+
+# DB migrations (after api is up or via one-off run)
+docker compose exec api alembic upgrade head
+# or: docker compose run --rm api alembic upgrade head
+
+# Tests inside the same image/env as production API
+docker compose run --rm api pytest
+
+# Interactive shell for debugging
+docker compose exec api python -c "from app.core.config import get_settings; print(get_settings().database_url)"
+
+# Stop everything (keep volumes)
+docker compose down
+
+# Reset DB volume (destructive)
+docker compose down -v
+```
+
+### CI parity
+
+- CI should **`docker compose build`** and **`docker compose up`** (or `docker compose run`) then run **pytest** and smoke checks the same way developers do, so “works on my machine” matches the pipeline.
+
+### What to avoid
+
+- Documenting `uvicorn` on the host pointing at `localhost:5432` while Postgres runs only in Docker — host port mapping drifts and driver URLs differ from in-container URLs.
+- Installing browsers on the developer laptop for Pilgrim crawling; use the **worker** container.
+
+### Cursor / IDE
+
+- Optional **Dev Containers** (`.devcontainer/devcontainer.json`) can attach the editor to the **api** service for debugging; keep behavior aligned with §11 (still Compose-backed).
+
+This file complements `architecture.mdc`, `config-environment.mdc`, and `celery-scheduler.mdc` for deployable Pilgrim stacks.
