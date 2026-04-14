@@ -35,19 +35,19 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 
 ```
 ┌─────────┐     ┌───────────┐     ┌─────────────┐
-│  Client  │────▶│  FastAPI   │────▶│  PostgreSQL  │
-└─────────┘     │  (API)     │     └─────────────┘
+│  Client │────▶│  FastAPI  │────▶│  PostgreSQL │
+└─────────┘     │  (API)    │     └─────────────┘
                 └─────┬─────┘
                       │ enqueue
                       ▼
                 ┌───────────┐     ┌─────────────┐
-                │   Redis    │────▶│   Celery     │
-                │  (Broker)  │     │  (Worker)    │
+                │   Redis   │────▶│   Celery    │
+                │  (Broker) │     │  (Worker)   │
                 └───────────┘     └──────┬──────┘
                                          │ Scrapling
                                          ▼
                                   ┌─────────────┐
-                                  │  Target URL  │
+                                  │  Target URL │
                                   └─────────────┘
 ```
 
