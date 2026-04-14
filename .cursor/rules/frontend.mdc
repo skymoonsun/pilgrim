@@ -1,0 +1,107 @@
+---
+applyIntelligently: true
+description: "Pilgrim frontend: React + TypeScript + Vite dashboard with dark theme, vanilla CSS design system, API client, and component guidelines."
+---
+
+# Frontend — Pilgrim Dashboard
+
+Pilgrim's frontend is a **React 19 + TypeScript + Vite** single-page application that provides a dashboard for managing crawl configurations, testing scrapes, and monitoring jobs.
+
+## 1. Stack
+
+| Technology | Purpose |
+|-----------|---------|
+| **React 19** | UI framework |
+| **TypeScript** | Type safety |
+| **Vite 8** | Dev server + bundler |
+| **React Router 7** | Client-side routing |
+| **Vanilla CSS** | Styling (no Tailwind) |
+
+## 2. Directory layout
+
+```
+frontend/
+├── src/
+│   ├── api/
+│   │   └── client.ts          # Typed API client (all endpoints)
+│   ├── components/
+│   │   ├── icons/Icons.tsx     # Inline SVG icon library
+│   │   └── layout/
+│   │       ├── AppLayout.tsx   # Sidebar + Header + Outlet
+│   │       ├── Sidebar.tsx     # Nav links with active state
+│   │       └── Header.tsx      # Search bar + profile
+│   ├── pages/
+│   │   ├── Dashboard/          # Health cards, metrics, recent jobs
+│   │   ├── Configurations/     # CRUD table for crawl configs
+│   │   ├── ScrapePlayground/   # Config selector + URL input + JSON response
+│   │   ├── Jobs/               # Job listing with status badges
+│   │   └── Settings/           # App settings (placeholder)
+│   ├── App.tsx                 # React Router routes
+│   ├── main.tsx                # Entry point (BrowserRouter)
+│   └── index.css               # Design system (CSS variables, components)
+├── public/
+│   ├── logo.png                # Sidebar brand logo
+│   └── favicon.png             # Browser tab icon
+├── Dockerfile                  # Node 22 Alpine + Vite dev server
+└── vite.config.ts              # API proxy + hot reload
+```
+
+## 3. Design system rules
+
+- **Dark theme only** — All backgrounds use CSS variable layers (`--bg-primary` through `--bg-sidebar`)
+- **Vanilla CSS** — No CSS frameworks; all styles in `index.css` using CSS custom properties
+- **Glassmorphism cards** — `backdrop-filter: blur(8px)` + semi-transparent backgrounds + border glow on hover
+- **Color palette**: Cyan accent (`#00f0ff`), blue secondary (`#0080ff`), dark navy backgrounds
+- **Typography**: Inter from Google Fonts, monospace for code/IDs
+- **Icons**: Inline SVG components in `components/icons/Icons.tsx` — no emoji, no icon font libraries
+- **Animations**: `fadeIn` keyframes with staggered delays for card grids
+
+## 4. Component conventions
+
+- **Pages** are in `src/pages/<PageName>/<PageName>.tsx`
+- **Layout** components are in `src/components/layout/`
+- **API calls** go through `src/api/client.ts` — never use raw `fetch()` in components
+- All API types are defined in `client.ts` alongside the methods
+- Use `useState` + `useEffect` for data fetching (no external state library yet)
+- Loading states use the `.spinner` CSS class
+- Empty states use the `.empty-state` CSS class with an SVG icon
+
+## 5. API proxy
+
+In development, Vite proxies `/api/*` to the backend API container:
+
+```ts
+// vite.config.ts
+proxy: {
+  '/api': {
+    target: 'http://api:8000',  // Docker service name
+    changeOrigin: true,
+  },
+}
+```
+
+**Never hardcode** `localhost:8000` in frontend code. Always use relative paths (`/api/v1/...`).
+
+## 6. Route ↔ API mapping
+
+| Route | Page | Backend endpoints |
+|-------|------|-------------------|
+| `/` | Dashboard | `GET /health/readiness`, `GET /crawl-configs/`, `GET /crawl/jobs` |
+| `/configurations` | Configurations | CRUD `/crawl-configs/` |
+| `/scrape` | ScrapePlayground | `POST /scrape/`, `GET /crawl-configs/` |
+| `/jobs` | Jobs | `GET /crawl/jobs` |
+| `/settings` | Settings | (none yet) |
+
+## 7. Docker
+
+- **Dev**: `node:22-alpine`, volume-mounts `src/` + `public/` for hot reload
+- **Prod** (future): multi-stage with `npm run build` → nginx serving static files
+- `usePolling: true` in Vite for Docker volume mount compatibility
+- `node_modules` is **not** volume-mounted — container uses its own copy
+
+## 8. Adding a new page
+
+1. Create `src/pages/NewPage/NewPage.tsx`
+2. Add route in `App.tsx` inside the `<Route element={<AppLayout />}>` group
+3. Add nav item in `Sidebar.tsx` (with an SVG icon from `Icons.tsx`)
+4. If new API calls are needed, add types + methods to `api/client.ts`
