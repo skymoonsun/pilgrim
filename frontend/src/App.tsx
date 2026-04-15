@@ -2,6 +2,8 @@ import { Routes, Route } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard/Dashboard';
 import Configurations from './pages/Configurations/Configurations';
+import ConfigCreate from './pages/Configurations/ConfigCreate';
+import ConfigDetail from './pages/Configurations/ConfigDetail';
 import ScrapePlayground from './pages/ScrapePlayground/ScrapePlayground';
 import Jobs from './pages/Jobs/Jobs';
 import Settings from './pages/Settings/Settings';
@@ -13,6 +15,8 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="configurations" element={<Configurations />} />
+        <Route path="configurations/new" element={<ConfigCreate />} />
+        <Route path="configurations/:id" element={<ConfigDetail />} />
         <Route path="scrape" element={<ScrapePlayground />} />
         <Route path="jobs" element={<Jobs />} />
         <Route path="settings" element={<Settings />} />
