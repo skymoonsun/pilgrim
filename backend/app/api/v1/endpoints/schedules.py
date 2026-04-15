@@ -1,4 +1,4 @@
-"""Schedule management endpoints — CRUD, URLs, configs, callback, trigger."""
+"""Schedule management endpoints — CRUD, URLs per config, callback, trigger."""
 
 from uuid import UUID
 
@@ -10,13 +10,13 @@ from app.schemas.schedule import (
     CallbackConfigCreate,
     CallbackConfigResponse,
     CallbackLogResponse,
+    ScheduleConfigLinkResponse,
     ScheduleCreate,
     ScheduleListResponse,
     ScheduleResponse,
     ScheduleUpdate,
     ScheduleUrlCreate,
     ScheduleUrlResponse,
-    ScheduleConfigLinkResponse,
 )
 from app.services.callback_service import CallbackService
 from app.services.schedule_service import ScheduleService
@@ -32,7 +32,7 @@ async def create_schedule(
     body: ScheduleCreate,
     session: AsyncSession = Depends(get_async_session),
 ) -> ScheduleResponse:
-    """Create a new crawl schedule with optional configs, URLs, and callback."""
+    """Create a new crawl schedule with config links (each with URLs) and optional callback."""
     service = ScheduleService(session)
     schedule = await service.create(body)
     return _to_response(schedule)
@@ -59,7 +59,7 @@ async def get_schedule(
     schedule_id: UUID = Path(...),
     session: AsyncSession = Depends(get_async_session),
 ) -> ScheduleResponse:
-    """Get schedule details including configs, URLs, and callback."""
+    """Get schedule details including config links with URLs and callback."""
     service = ScheduleService(session)
     schedule = await service.get_by_id(schedule_id)
     return _to_response(schedule)
@@ -95,7 +95,7 @@ async def trigger_schedule(
     schedule_id: UUID = Path(...),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict:
-    """Manually trigger a schedule — creates jobs for all config×url pairs."""
+    """Manually trigger — creates jobs for each config's URL targets."""
     from app.workers.tasks.scrape import run_crawl_job
 
     service = ScheduleService(session)
@@ -115,22 +115,24 @@ async def trigger_schedule(
     }
 
 
-# ── URL management ──────────────────────────────────────────────
+# ── URL management (per config link) ────────────────────────────
 
 
 @router.post(
-    "/{schedule_id}/urls",
+    "/{schedule_id}/config-links/{config_link_id}/urls",
     response_model=ScheduleUrlResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def add_url(
     body: ScheduleUrlCreate,
     schedule_id: UUID = Path(...),
+    config_link_id: UUID = Path(...),
     session: AsyncSession = Depends(get_async_session),
 ) -> ScheduleUrlResponse:
-    """Add a target URL to a schedule."""
+    """Add a target URL to a specific config link."""
     service = ScheduleService(session)
-    target = await service.add_url(schedule_id, body)
+    await service.get_by_id(schedule_id)  # validate schedule exists
+    target = await service.add_url(config_link_id, body)
     return ScheduleUrlResponse.model_validate(target)
 
 
@@ -143,9 +145,9 @@ async def remove_url(
     url_id: UUID = Path(...),
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
-    """Remove a URL from a schedule."""
+    """Remove a URL from a config link."""
     service = ScheduleService(session)
-    await service.remove_url(schedule_id, url_id)
+    await service.remove_url(url_id)
 
 
 # ── Callback management ─────────────────────────────────────────
@@ -199,7 +201,7 @@ async def get_callback_logs(
 
 
 def _to_response(schedule) -> ScheduleResponse:
-    """Build ScheduleResponse with nested config names."""
+    """Build ScheduleResponse with nested config links and their URLs."""
     config_links = []
     for link in schedule.config_links:
         config_links.append(
@@ -208,6 +210,10 @@ def _to_response(schedule) -> ScheduleResponse:
                 config_id=link.config_id,
                 config_name=link.config.name if link.config else None,
                 priority=link.priority,
+                url_targets=[
+                    ScheduleUrlResponse.model_validate(t)
+                    for t in link.url_targets
+                ],
             )
         )
 
@@ -226,10 +232,6 @@ def _to_response(schedule) -> ScheduleResponse:
         created_at=schedule.created_at,
         updated_at=schedule.updated_at,
         config_links=config_links,
-        url_targets=[
-            ScheduleUrlResponse.model_validate(t)
-            for t in schedule.url_targets
-        ],
         callback=(
             CallbackConfigResponse.model_validate(schedule.callback)
             if schedule.callback

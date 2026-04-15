@@ -149,7 +149,9 @@ export default function Schedules() {
                     <span className="badge badge--queued">{schedule.config_links.length}</span>
                   </td>
                   <td>
-                    <span className="badge badge--queued">{schedule.url_targets.length}</span>
+                    <span className="badge badge--queued">
+                      {schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0)}
+                    </span>
                   </td>
                   <td>
                     <span className={`badge badge--${schedule.is_active ? 'success' : 'cancelled'}`}>

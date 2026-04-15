@@ -1,4 +1,7 @@
-"""ScheduleConfigLink — M2M between CrawlSchedule and CrawlConfiguration."""
+"""ScheduleConfigLink — M2M between CrawlSchedule and CrawlConfiguration.
+
+Each link owns its own URL target set, so URLs are config-specific.
+"""
 
 from uuid import UUID
 
@@ -12,8 +15,9 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 class ScheduleConfigLink(Base, UUIDMixin, TimestampMixin):
     """Links a schedule to one of its crawl configurations.
 
-    A single schedule can use multiple configs; ``priority`` controls the
-    ordering (lower = first).
+    Each config link has its own set of target URLs.  When the schedule
+    triggers, every (config, url) pair within the link produces a
+    ``CrawlJob`` — *not* the cartesian product across all links.
     """
 
     __tablename__ = "schedule_config_links"
@@ -41,9 +45,14 @@ class ScheduleConfigLink(Base, UUIDMixin, TimestampMixin):
     config: Mapped["CrawlConfiguration"] = relationship(
         "CrawlConfiguration",
     )
+    url_targets: Mapped[list["ScheduleUrlTarget"]] = relationship(
+        "ScheduleUrlTarget",
+        back_populates="config_link",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return (
             f"<ScheduleConfigLink(schedule={self.schedule_id}, "
-            f"config={self.config_id}, priority={self.priority})>"
+            f"config={self.config_id}, urls={len(self.url_targets)})>"
         )

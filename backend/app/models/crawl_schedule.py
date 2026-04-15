@@ -65,11 +65,6 @@ class CrawlSchedule(Base, UUIDMixin, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="ScheduleConfigLink.priority",
     )
-    url_targets: Mapped[list["ScheduleUrlTarget"]] = relationship(
-        "ScheduleUrlTarget",
-        back_populates="schedule",
-        cascade="all, delete-orphan",
-    )
     callback: Mapped["CallbackConfig | None"] = relationship(
         "CallbackConfig",
         back_populates="schedule",

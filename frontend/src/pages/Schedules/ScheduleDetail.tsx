@@ -14,8 +14,9 @@ export default function ScheduleDetail() {
   const [logs, setLogs] = useState<CallbackLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newUrl, setNewUrl] = useState('');
-  const [newLabel, setNewLabel] = useState('');
+
+  // Per-config-link URL add form state
+  const [newUrls, setNewUrls] = useState<Record<string, { url: string; label: string }>>({});
 
   useEffect(() => {
     if (id) loadSchedule(id);
@@ -67,12 +68,16 @@ export default function ScheduleDetail() {
     }
   }
 
-  async function handleAddUrl() {
-    if (!schedule || !newUrl.trim()) return;
+  async function handleAddUrl(configLinkId: string) {
+    if (!schedule) return;
+    const data = newUrls[configLinkId];
+    if (!data?.url.trim()) return;
     try {
-      await schedulesApi.addUrl(schedule.id, { url: newUrl, label: newLabel || null });
-      setNewUrl('');
-      setNewLabel('');
+      await schedulesApi.addUrl(schedule.id, configLinkId, {
+        url: data.url,
+        label: data.label || null,
+      });
+      setNewUrls((prev) => ({ ...prev, [configLinkId]: { url: '', label: '' } }));
       loadSchedule(schedule.id);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed');
@@ -87,6 +92,17 @@ export default function ScheduleDetail() {
     } catch (err) {
       console.error(err);
     }
+  }
+
+  function getNewUrl(linkId: string) {
+    return newUrls[linkId] || { url: '', label: '' };
+  }
+
+  function setNewUrlField(linkId: string, field: 'url' | 'label', value: string) {
+    setNewUrls((prev) => ({
+      ...prev,
+      [linkId]: { ...getNewUrl(linkId), [field]: value },
+    }));
   }
 
   if (loading) {
@@ -104,6 +120,8 @@ export default function ScheduleDetail() {
       </div>
     );
   }
+
+  const totalUrls = schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0);
 
   return (
     <div className="animate-in">
@@ -128,7 +146,7 @@ export default function ScheduleDetail() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
 
-        {/* ── General Info ── */}
+        {/* ── Schedule Info ── */}
         <div className="card" style={{ padding: 28 }}>
           <h3 className="card-title" style={{ marginBottom: 20 }}>Schedule Info</h3>
           <div className="detail-grid">
@@ -150,79 +168,8 @@ export default function ScheduleDetail() {
             <Row label="Next Run" value={schedule.next_run_at ? new Date(schedule.next_run_at).toLocaleString() : '—'} />
             <Row label="Last Run" value={schedule.last_run_at ? new Date(schedule.last_run_at).toLocaleString() : '—'} />
             <Row label="Total Runs" value={schedule.run_count.toString()} />
+            <Row label="Configs" value={`${schedule.config_links.length} configs, ${totalUrls} URLs`} />
             <Row label="ID" value={schedule.id} mono />
-          </div>
-        </div>
-
-        {/* ── Linked Configs ── */}
-        <div className="card" style={{ padding: 28 }}>
-          <h3 className="card-title" style={{ marginBottom: 20 }}>Linked Configs</h3>
-          {schedule.config_links.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No configs linked</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {schedule.config_links.map((link) => (
-                <div key={link.id} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '10px 14px',
-                  background: 'var(--bg-tertiary)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-subtle)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <IconLink size={14} />
-                    <Link to={`/configurations/${link.config_id}`}
-                      style={{ color: 'var(--accent-cyan)', fontWeight: 600, fontSize: '0.85rem' }}>
-                      {link.config_name || link.config_id.slice(0, 8)}
-                    </Link>
-                  </div>
-                  <span className="badge badge--queued">P{link.priority}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── URL Targets ── */}
-        <div className="card" style={{ padding: 28 }}>
-          <h3 className="card-title" style={{ marginBottom: 20 }}>URL Targets ({schedule.url_targets.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            {schedule.url_targets.map((t) => (
-              <div key={t.id} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 14px',
-                background: 'var(--bg-tertiary)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '0.82rem', color: 'var(--text-primary)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {t.url}
-                  </div>
-                  {t.label && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t.label}</div>
-                  )}
-                </div>
-                <button className="action-btn" onClick={() => handleRemoveUrl(t.id)}>
-                  <IconTrash size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input type="url" className="form-input" placeholder="https://example.com"
-              value={newUrl} onChange={(e) => setNewUrl(e.target.value)}
-              style={{ flex: 2 }} />
-            <input type="text" className="form-input" placeholder="Label"
-              value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-              style={{ flex: 1 }} />
-            <button type="button" className="btn btn-secondary" onClick={handleAddUrl}
-              disabled={!newUrl.trim()}>
-              <IconPlus size={14} />
-            </button>
           </div>
         </div>
 
@@ -251,6 +198,73 @@ export default function ScheduleDetail() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No callback configured</p>
           )}
         </div>
+      </div>
+
+      {/* ── Config Links with URLs ── */}
+      <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {schedule.config_links.map((link) => (
+          <div key={link.id} className="card" style={{
+            padding: 28,
+            border: '1px solid var(--accent-cyan)',
+            boxShadow: '0 0 12px rgba(0,240,255,0.04)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 className="card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <IconLink size={16} />
+                <Link to={`/configurations/${link.config_id}`}
+                  style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>
+                  {link.config_name || link.config_id.slice(0, 8)}
+                </Link>
+                <span className="badge badge--queued" style={{ marginLeft: 8 }}>
+                  {link.url_targets.length} URL{link.url_targets.length !== 1 ? 's' : ''}
+                </span>
+              </h3>
+            </div>
+
+            {/* URL list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {link.url_targets.map((t) => (
+                <div key={t.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '8px 12px',
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '0.82rem', color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {t.url}
+                    </div>
+                    {t.label && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t.label}</div>}
+                  </div>
+                  <button className="action-btn" onClick={() => handleRemoveUrl(t.id)}>
+                    <IconTrash size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add URL form */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="url" className="form-input" placeholder="https://example.com"
+                value={getNewUrl(link.id).url}
+                onChange={(e) => setNewUrlField(link.id, 'url', e.target.value)}
+                style={{ flex: 2 }} />
+              <input type="text" className="form-input" placeholder="Label"
+                value={getNewUrl(link.id).label}
+                onChange={(e) => setNewUrlField(link.id, 'label', e.target.value)}
+                style={{ flex: 1 }} />
+              <button type="button" className="btn btn-secondary"
+                onClick={() => handleAddUrl(link.id)}
+                disabled={!getNewUrl(link.id).url.trim()}>
+                <IconPlus size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* ── Callback Logs ── */}

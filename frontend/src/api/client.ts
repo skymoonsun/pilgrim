@@ -86,6 +86,7 @@ export interface ScheduleConfigLink {
   config_id: string;
   config_name: string | null;
   priority: number;
+  url_targets: ScheduleUrlTarget[];
 }
 
 export interface CallbackConfig {
@@ -136,13 +137,17 @@ export interface Schedule {
   created_at: string;
   updated_at: string;
   config_links: ScheduleConfigLink[];
-  url_targets: ScheduleUrlTarget[];
   callback: CallbackConfig | null;
 }
 
 export interface ScheduleListResponse {
   items: Schedule[];
   total: number;
+}
+
+export interface ConfigLinkUrlsCreate {
+  config_id: string;
+  urls: { url: string; label?: string | null }[];
 }
 
 export interface ScheduleCreateData {
@@ -152,8 +157,7 @@ export interface ScheduleCreateData {
   cron_expression?: string | null;
   interval_seconds?: number | null;
   default_queue?: string;
-  config_ids?: string[];
-  urls?: { url: string; label?: string | null }[];
+  config_links?: ConfigLinkUrlsCreate[];
   callback?: {
     url: string;
     method?: string;
@@ -275,9 +279,9 @@ export const schedulesApi = {
   trigger: (id: string) =>
     request<TriggerResponse>(`/schedules/${id}/trigger`, { method: 'POST' }),
 
-  // URL management
-  addUrl: (scheduleId: string, data: { url: string; label?: string | null }) =>
-    request<ScheduleUrlTarget>(`/schedules/${scheduleId}/urls`, {
+  // URL management (per config link)
+  addUrl: (scheduleId: string, configLinkId: string, data: { url: string; label?: string | null }) =>
+    request<ScheduleUrlTarget>(`/schedules/${scheduleId}/config-links/${configLinkId}/urls`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),

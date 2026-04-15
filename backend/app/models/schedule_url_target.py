@@ -1,4 +1,4 @@
-"""ScheduleUrlTarget — URL set for a CrawlSchedule."""
+"""ScheduleUrlTarget — URL bound to a specific config link within a schedule."""
 
 from uuid import UUID
 
@@ -10,17 +10,17 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class ScheduleUrlTarget(Base, UUIDMixin, TimestampMixin):
-    """A single target URL belonging to a schedule's URL set.
+    """A single target URL belonging to a specific config link.
 
-    When the schedule triggers, each active URL is crawled with every
-    linked configuration.
+    When the schedule triggers, this URL is crawled using the parent
+    config link's configuration — not all configs in the schedule.
     """
 
     __tablename__ = "schedule_url_targets"
 
-    schedule_id: Mapped[UUID] = mapped_column(
+    config_link_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("crawl_schedules.id", ondelete="CASCADE"),
+        ForeignKey("schedule_config_links.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -35,8 +35,8 @@ class ScheduleUrlTarget(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Relationships ────────────────────────────────────────────
-    schedule: Mapped["CrawlSchedule"] = relationship(
-        "CrawlSchedule", back_populates="url_targets",
+    config_link: Mapped["ScheduleConfigLink"] = relationship(
+        "ScheduleConfigLink", back_populates="url_targets",
     )
 
     def __repr__(self) -> str:

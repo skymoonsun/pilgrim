@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { schedulesApi, configsApi } from '../../api/client';
-import type { CrawlConfig, ScheduleCreateData } from '../../api/client';
+import type { CrawlConfig, ScheduleCreateData, ConfigLinkUrlsCreate } from '../../api/client';
 import { IconPlus, IconTrash, IconCalendar } from '../../components/icons/Icons';
+
+interface ConfigEntry {
+  config_id: string;
+  urls: { url: string; label: string }[];
+}
 
 export default function ScheduleCreate() {
   const navigate = useNavigate();
@@ -18,8 +23,7 @@ export default function ScheduleCreate() {
     cron_expression: '',
     interval_minutes: '60',
     default_queue: 'crawl_default',
-    selectedConfigIds: [] as string[],
-    urls: [{ url: '', label: '' }],
+    configEntries: [] as ConfigEntry[],
     enableCallback: false,
     callbackUrl: '',
     callbackMethod: 'POST',
@@ -37,36 +41,63 @@ export default function ScheduleCreate() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function addUrl() {
+  // ── Config entry management ───────────────────────────────────
+
+  function addConfigEntry(configId: string) {
     setForm((prev) => ({
       ...prev,
-      urls: [...prev.urls, { url: '', label: '' }],
+      configEntries: [
+        ...prev.configEntries,
+        { config_id: configId, urls: [{ url: '', label: '' }] },
+      ],
     }));
   }
 
-  function removeUrl(index: number) {
+  function removeConfigEntry(index: number) {
     setForm((prev) => ({
       ...prev,
-      urls: prev.urls.filter((_, i) => i !== index),
+      configEntries: prev.configEntries.filter((_, i) => i !== index),
     }));
   }
 
-  function updateUrl(index: number, field: 'url' | 'label', value: string) {
+  function addUrlToConfig(configIndex: number) {
     setForm((prev) => {
-      const urls = [...prev.urls];
-      urls[index] = { ...urls[index], [field]: value };
-      return { ...prev, urls };
+      const entries = [...prev.configEntries];
+      entries[configIndex] = {
+        ...entries[configIndex],
+        urls: [...entries[configIndex].urls, { url: '', label: '' }],
+      };
+      return { ...prev, configEntries: entries };
     });
   }
 
-  function toggleConfig(configId: string) {
+  function removeUrlFromConfig(configIndex: number, urlIndex: number) {
     setForm((prev) => {
-      const ids = prev.selectedConfigIds.includes(configId)
-        ? prev.selectedConfigIds.filter((id) => id !== configId)
-        : [...prev.selectedConfigIds, configId];
-      return { ...prev, selectedConfigIds: ids };
+      const entries = [...prev.configEntries];
+      entries[configIndex] = {
+        ...entries[configIndex],
+        urls: entries[configIndex].urls.filter((_, i) => i !== urlIndex),
+      };
+      return { ...prev, configEntries: entries };
     });
   }
+
+  function updateUrlInConfig(configIndex: number, urlIndex: number, field: 'url' | 'label', value: string) {
+    setForm((prev) => {
+      const entries = [...prev.configEntries];
+      const urls = [...entries[configIndex].urls];
+      urls[urlIndex] = { ...urls[urlIndex], [field]: value };
+      entries[configIndex] = { ...entries[configIndex], urls };
+      return { ...prev, configEntries: entries };
+    });
+  }
+
+  // ── Available configs (not already selected) ──────────────────
+
+  const selectedConfigIds = form.configEntries.map((e) => e.config_id);
+  const availableConfigs = configs.filter((c) => !selectedConfigIds.includes(c.id));
+
+  // ── Submit ────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,15 +105,21 @@ export default function ScheduleCreate() {
     setSaving(true);
 
     try {
+      const config_links: ConfigLinkUrlsCreate[] = form.configEntries
+        .filter((entry) => entry.urls.some((u) => u.url.trim()))
+        .map((entry) => ({
+          config_id: entry.config_id,
+          urls: entry.urls
+            .filter((u) => u.url.trim())
+            .map((u) => ({ url: u.url, label: u.label || null })),
+        }));
+
       const data: ScheduleCreateData = {
         name: form.name,
         description: form.description || null,
         timezone: form.timezone,
         default_queue: form.default_queue,
-        config_ids: form.selectedConfigIds,
-        urls: form.urls
-          .filter((u) => u.url.trim())
-          .map((u) => ({ url: u.url, label: u.label || null })),
+        config_links,
       };
 
       if (form.scheduleType === 'cron') {
@@ -130,12 +167,16 @@ export default function ScheduleCreate() {
     setSaving(false);
   }
 
+  function getConfigName(id: string) {
+    return configs.find((c) => c.id === id)?.name || id.slice(0, 8);
+  }
+
   return (
     <div className="animate-in">
       <div className="page-header">
         <div>
           <h1 className="page-title">New Schedule</h1>
-          <p className="page-subtitle">Create a recurring crawl schedule</p>
+          <p className="page-subtitle">Create a recurring crawl schedule with config-specific URLs</p>
         </div>
       </div>
 
@@ -156,7 +197,7 @@ export default function ScheduleCreate() {
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
 
-          {/* ── Left: General + Schedule ── */}
+          {/* ── Left: General + Timing ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div className="card" style={{ padding: 28 }}>
               <h3 className="card-title" style={{ marginBottom: 20 }}>General</h3>
@@ -225,65 +266,7 @@ export default function ScheduleCreate() {
               )}
             </div>
 
-            {/* Configs */}
-            <div className="card" style={{ padding: 28 }}>
-              <h3 className="card-title" style={{ marginBottom: 20 }}>Crawl Configs *</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {configs.map((config) => (
-                  <label key={config.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 14px',
-                    background: form.selectedConfigIds.includes(config.id) ? 'rgba(0,240,255,0.08)' : 'var(--bg-tertiary)',
-                    border: `1px solid ${form.selectedConfigIds.includes(config.id) ? 'var(--accent-cyan)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}>
-                    <input type="checkbox" checked={form.selectedConfigIds.includes(config.id)}
-                      onChange={() => toggleConfig(config.id)} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{config.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{config.scraper_profile}</div>
-                    </div>
-                  </label>
-                ))}
-                {configs.length === 0 && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No configs available. Create one first.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Right: URLs + Callback ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="card" style={{ padding: 28 }}>
-              <h3 className="card-title" style={{ marginBottom: 20 }}>Target URLs *</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {form.urls.map((urlItem, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'start' }}>
-                    <div style={{ flex: 1 }}>
-                      <input type="url" className="form-input" placeholder="https://example.com/page"
-                        value={urlItem.url} onChange={(e) => updateUrl(i, 'url', e.target.value)}
-                        style={{ marginBottom: 4 }} />
-                      <input type="text" className="form-input" placeholder="Label (optional)"
-                        value={urlItem.label} onChange={(e) => updateUrl(i, 'label', e.target.value)}
-                        style={{ fontSize: '0.8rem' }} />
-                    </div>
-                    {form.urls.length > 1 && (
-                      <button type="button" className="action-btn" onClick={() => removeUrl(i)}
-                        style={{ marginTop: 6 }}>
-                        <IconTrash size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <button type="button" className="btn btn-secondary" onClick={addUrl}
-                style={{ marginTop: 12 }}>
-                <IconPlus size={14} /> Add URL
-              </button>
-            </div>
-
+            {/* Callback */}
             <div className="card" style={{ padding: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <h3 className="card-title" style={{ margin: 0 }}>Callback (Optional)</h3>
@@ -312,7 +295,6 @@ export default function ScheduleCreate() {
                       </select>
                     </div>
                   </div>
-
                   <div className="form-group">
                     <label className="form-label">Headers (JSON)</label>
                     <textarea className="form-input" rows={2}
@@ -321,7 +303,6 @@ export default function ScheduleCreate() {
                       onChange={(e) => updateField('callbackHeaders', e.target.value)}
                       style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }} />
                   </div>
-
                   <div className="form-group">
                     <label className="form-label">Field Mapping (JSON)</label>
                     <textarea className="form-input" rows={6}
@@ -329,11 +310,10 @@ export default function ScheduleCreate() {
                       onChange={(e) => updateField('callbackFieldMapping', e.target.value)}
                       style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', whiteSpace: 'pre' }} />
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                      Use $.data.*, $.url, $.metadata.* paths. See docs for details.
+                      Use $.data.*, $.url, $.metadata.* paths
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', gap: 16 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'end' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
                       <input type="checkbox" checked={form.callbackBatchResults}
                         onChange={(e) => updateField('callbackBatchResults', e.target.checked)} />
@@ -350,10 +330,99 @@ export default function ScheduleCreate() {
               )}
             </div>
           </div>
+
+          {/* ── Right: Config + URL pairs ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+            {/* Add config selector */}
+            {availableConfigs.length > 0 && (
+              <div className="card" style={{ padding: 28 }}>
+                <h3 className="card-title" style={{ marginBottom: 16 }}>Add Config + URLs</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {availableConfigs.map((config) => (
+                    <button type="button" key={config.id}
+                      onClick={() => addConfigEntry(config.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 14px',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                        transition: 'all 0.15s ease',
+                        width: '100%',
+                        textAlign: 'left',
+                      }}>
+                      <IconPlus size={14} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{config.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{config.scraper_profile}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Selected config entries with their URLs */}
+            {form.configEntries.map((entry, ci) => (
+              <div key={entry.config_id} className="card" style={{
+                padding: 28,
+                border: '1px solid var(--accent-cyan)',
+                boxShadow: '0 0 12px rgba(0,240,255,0.06)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>
+                    <span style={{ color: 'var(--accent-cyan)' }}>{getConfigName(entry.config_id)}</span>
+                  </h3>
+                  <button type="button" className="action-btn" onClick={() => removeConfigEntry(ci)}
+                    style={{ color: 'var(--status-failed)' }}>
+                    <IconTrash size={16} />
+                  </button>
+                </div>
+
+                <label className="form-label">Target URLs for this config</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {entry.urls.map((urlItem, ui) => (
+                    <div key={ui} style={{ display: 'flex', gap: 8, alignItems: 'start' }}>
+                      <div style={{ flex: 1 }}>
+                        <input type="url" className="form-input" placeholder="https://example.com/page"
+                          value={urlItem.url} onChange={(e) => updateUrlInConfig(ci, ui, 'url', e.target.value)}
+                          style={{ marginBottom: 4 }} />
+                        <input type="text" className="form-input" placeholder="Label (optional)"
+                          value={urlItem.label} onChange={(e) => updateUrlInConfig(ci, ui, 'label', e.target.value)}
+                          style={{ fontSize: '0.8rem' }} />
+                      </div>
+                      {entry.urls.length > 1 && (
+                        <button type="button" className="action-btn" onClick={() => removeUrlFromConfig(ci, ui)}
+                          style={{ marginTop: 6 }}>
+                          <IconTrash size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={() => addUrlToConfig(ci)}
+                  style={{ marginTop: 10 }}>
+                  <IconPlus size={14} /> Add URL
+                </button>
+              </div>
+            ))}
+
+            {form.configEntries.length === 0 && (
+              <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  Select configs from the list above to add URL targets
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
-          <button type="submit" className="btn btn-primary" disabled={saving || !form.name}
+          <button type="submit" className="btn btn-primary"
+            disabled={saving || !form.name || form.configEntries.length === 0}
             style={{ minWidth: 180, justifyContent: 'center' }}>
             {saving ? (
               <><div className="spinner" /> Creating...</>

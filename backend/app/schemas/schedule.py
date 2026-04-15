@@ -1,4 +1,8 @@
-"""Schedule and callback request/response schemas."""
+"""Schedule and callback request/response schemas.
+
+URLs are nested under config links (not schedule-level), so each config
+has its own URL target set.
+"""
 
 from datetime import datetime
 from uuid import UUID
@@ -10,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ScheduleUrlCreate(BaseModel):
-    """Add a URL to a schedule's target set."""
+    """Add a URL to a config link's target set."""
 
     url: str = Field(
         ..., min_length=1, max_length=2000, description="Target URL"
@@ -110,11 +114,21 @@ class CallbackLogResponse(BaseModel):
     created_at: datetime
 
 
-# ── Config link (nested) ────────────────────────────────────────
+# ── Config link + nested URLs ────────────────────────────────────
+
+
+class ConfigLinkUrlsCreate(BaseModel):
+    """A config ID with its own URL targets for schedule creation."""
+
+    config_id: str = Field(..., description="CrawlConfiguration UUID")
+    urls: list[ScheduleUrlCreate] = Field(
+        default_factory=list,
+        description="URLs to crawl with this config",
+    )
 
 
 class ScheduleConfigLinkResponse(BaseModel):
-    """Serialised config link within a schedule."""
+    """Serialised config link with its nested URL targets."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,13 +136,18 @@ class ScheduleConfigLinkResponse(BaseModel):
     config_id: UUID
     config_name: str | None = None
     priority: int
+    url_targets: list[ScheduleUrlResponse] = []
 
 
 # ── Schedule ─────────────────────────────────────────────────────
 
 
 class ScheduleCreate(BaseModel):
-    """Create a new crawl schedule."""
+    """Create a new crawl schedule.
+
+    Each config_link contains a config_id and its own URL targets.
+    This ensures each URL is paired with the correct config.
+    """
 
     name: str = Field(
         ..., min_length=1, max_length=200, description="Human-readable name"
@@ -150,15 +169,12 @@ class ScheduleCreate(BaseModel):
 
     default_queue: str = Field(default="crawl_default", max_length=64)
 
-    # Initial sets
-    config_ids: list[UUID] = Field(
+    # Config links with per-config URLs
+    config_links: list[ConfigLinkUrlsCreate] = Field(
         default_factory=list,
-        description="CrawlConfiguration IDs to link",
+        description="Config + URL pairs",
     )
-    urls: list[ScheduleUrlCreate] = Field(
-        default_factory=list,
-        description="Initial URL targets",
-    )
+
     callback: CallbackConfigCreate | None = Field(
         None, description="Optional webhook callback"
     )
@@ -177,7 +193,7 @@ class ScheduleUpdate(BaseModel):
 
 
 class ScheduleResponse(BaseModel):
-    """Full schedule response with nested configs, URLs, and callback."""
+    """Full schedule response with nested config links (each with URLs) and callback."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -197,7 +213,6 @@ class ScheduleResponse(BaseModel):
 
     # Nested
     config_links: list[ScheduleConfigLinkResponse] = []
-    url_targets: list[ScheduleUrlResponse] = []
     callback: CallbackConfigResponse | None = None
 
 

@@ -1,4 +1,4 @@
-"""Service for managing crawl schedules, URL targets, and config links."""
+"""Service for managing crawl schedules, config links, URL targets."""
 
 import logging
 from datetime import datetime, timezone
@@ -37,10 +37,10 @@ class ScheduleService:
 
     def _base_query(self):
         return select(CrawlSchedule).options(
-            selectinload(CrawlSchedule.config_links).selectinload(
-                ScheduleConfigLink.config
-            ),
-            selectinload(CrawlSchedule.url_targets),
+            selectinload(CrawlSchedule.config_links)
+            .selectinload(ScheduleConfigLink.config),
+            selectinload(CrawlSchedule.config_links)
+            .selectinload(ScheduleConfigLink.url_targets),
             selectinload(CrawlSchedule.callback),
         )
 
@@ -92,25 +92,27 @@ class ScheduleService:
         self.session.add(schedule)
         await self.session.flush()  # get schedule.id
 
-        # Link configs
-        for i, config_id in enumerate(data.config_ids):
+        # Create config links with their URL targets
+        for i, cl in enumerate(data.config_links):
+            config_id = UUID(cl.config_id)
             await self._validate_config(config_id)
+
             link = ScheduleConfigLink(
                 schedule_id=schedule.id,
                 config_id=config_id,
                 priority=i,
             )
             self.session.add(link)
+            await self.session.flush()  # get link.id
 
-        # Add URL targets
-        for url_data in data.urls:
-            target = ScheduleUrlTarget(
-                schedule_id=schedule.id,
-                url=url_data.url,
-                label=url_data.label,
-                is_active=url_data.is_active,
-            )
-            self.session.add(target)
+            for url_data in cl.urls:
+                target = ScheduleUrlTarget(
+                    config_link_id=link.id,
+                    url=url_data.url,
+                    label=url_data.label,
+                    is_active=url_data.is_active,
+                )
+                self.session.add(target)
 
         # Callback config
         if data.callback:
@@ -155,14 +157,13 @@ class ScheduleService:
         await self.session.delete(schedule)
         await self.session.commit()
 
-    # ── URL management ───────────────────────────────────────────
+    # ── URL management (per config link) ─────────────────────────
 
     async def add_url(
-        self, schedule_id: UUID, data: ScheduleUrlCreate
+        self, config_link_id: UUID, data: ScheduleUrlCreate
     ) -> ScheduleUrlTarget:
-        await self.get_by_id(schedule_id)  # validate exists
         target = ScheduleUrlTarget(
-            schedule_id=schedule_id,
+            config_link_id=config_link_id,
             url=data.url,
             label=data.label,
             is_active=data.is_active,
@@ -172,39 +173,10 @@ class ScheduleService:
         await self.session.refresh(target)
         return target
 
-    async def remove_url(self, schedule_id: UUID, url_id: UUID) -> None:
+    async def remove_url(self, url_id: UUID) -> None:
         await self.session.execute(
             delete(ScheduleUrlTarget).where(
                 ScheduleUrlTarget.id == url_id,
-                ScheduleUrlTarget.schedule_id == schedule_id,
-            )
-        )
-        await self.session.commit()
-
-    # ── Config link management ───────────────────────────────────
-
-    async def link_config(
-        self, schedule_id: UUID, config_id: UUID, priority: int = 0
-    ) -> ScheduleConfigLink:
-        await self.get_by_id(schedule_id)
-        await self._validate_config(config_id)
-        link = ScheduleConfigLink(
-            schedule_id=schedule_id,
-            config_id=config_id,
-            priority=priority,
-        )
-        self.session.add(link)
-        await self.session.commit()
-        await self.session.refresh(link)
-        return link
-
-    async def unlink_config(
-        self, schedule_id: UUID, config_id: UUID
-    ) -> None:
-        await self.session.execute(
-            delete(ScheduleConfigLink).where(
-                ScheduleConfigLink.schedule_id == schedule_id,
-                ScheduleConfigLink.config_id == config_id,
             )
         )
         await self.session.commit()
@@ -236,23 +208,17 @@ class ScheduleService:
     # ── Trigger (manual or by beat) ──────────────────────────────
 
     async def trigger(self, schedule_id: UUID) -> list[CrawlJob]:
-        """Create CrawlJobs for every (config, url) pair in the schedule."""
+        """Create CrawlJobs for every (config_link → urls) pair."""
         schedule = await self.get_by_id(schedule_id)
         jobs: list[CrawlJob] = []
 
-        configs = [link.config for link in schedule.config_links]
-        urls = [t for t in schedule.url_targets if t.is_active]
-
-        if not configs or not urls:
-            logger.warning(
-                "Schedule %s has no configs or URLs — skipping", schedule_id
-            )
-            return jobs
-
-        for config in configs:
-            for url_target in urls:
+        for link in schedule.config_links:
+            active_urls = [t for t in link.url_targets if t.is_active]
+            if not active_urls:
+                continue
+            for url_target in active_urls:
                 job = CrawlJob(
-                    crawl_configuration_id=config.id,
+                    crawl_configuration_id=link.config_id,
                     target_url=url_target.url,
                     queue=schedule.default_queue,
                     priority=5,
@@ -260,6 +226,13 @@ class ScheduleService:
                 )
                 self.session.add(job)
                 jobs.append(job)
+
+        if not jobs:
+            logger.warning(
+                "Schedule %s has no active config/URL pairs — skipping",
+                schedule_id,
+            )
+            return jobs
 
         # Update tracking
         now = datetime.now(timezone.utc)

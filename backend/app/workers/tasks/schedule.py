@@ -52,7 +52,9 @@ async def _check_schedules() -> dict[str, int]:
                     selectinload(CrawlSchedule.config_links).selectinload(
                         ScheduleConfigLink.config
                     ),
-                    selectinload(CrawlSchedule.url_targets),
+                    selectinload(CrawlSchedule.config_links).selectinload(
+                        ScheduleConfigLink.url_targets
+                    ),
                     selectinload(CrawlSchedule.callback),
                 )
                 .where(
