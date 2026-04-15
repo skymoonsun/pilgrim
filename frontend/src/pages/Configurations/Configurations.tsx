@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
-import { IconPlus, IconEye, IconFlask, IconTrash, IconConfig } from '../../components/icons/Icons';
+import { IconPlus, IconEye, IconEdit, IconFlask, IconTrash, IconConfig } from '../../components/icons/Icons';
 
 export default function Configurations() {
   const [configs, setConfigs] = useState<CrawlConfig[]>([]);
@@ -109,6 +109,9 @@ export default function Configurations() {
                     <div className="action-btns">
                       <Link to={`/configurations/${config.id}`} className="action-btn" title="View">
                         <IconEye size={16} />
+                      </Link>
+                      <Link to={`/configurations/${config.id}/edit`} className="action-btn" title="Edit">
+                        <IconEdit size={16} />
                       </Link>
                       <Link to={`/scrape?config=${config.id}`} className="action-btn" title="Test Scrape">
                         <IconFlask size={16} />

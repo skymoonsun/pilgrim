@@ -74,5 +74,14 @@ class CrawlJobResponse(BaseModel):
     priority: int
     error_message: str | None
     result_summary: dict | None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CrawlJobListResponse(BaseModel):
+    """Paginated crawl job list."""
+
+    items: list[CrawlJobResponse]
+    total: int

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
-import { IconConfig, IconFlask, IconTrash, IconRefresh } from '../../components/icons/Icons';
+import { IconConfig, IconFlask, IconEdit, IconTrash, IconRefresh } from '../../components/icons/Icons';
 
 export default function ConfigDetail() {
   const { id } = useParams<{ id: string }>();
@@ -80,7 +80,10 @@ export default function ConfigDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Link to={`/scrape?config=${config.id}`} className="btn btn-primary">
+          <Link to={`/configurations/${config.id}/edit`} className="btn btn-primary">
+            <IconEdit size={16} /> Edit
+          </Link>
+          <Link to={`/scrape?config=${config.id}`} className="btn btn-secondary">
             <IconFlask size={16} /> Test Scrape
           </Link>
           <button className="btn btn-secondary" onClick={handleToggleActive}>

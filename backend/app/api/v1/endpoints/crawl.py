@@ -2,15 +2,30 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_async_session
-from app.schemas.crawl import CrawlJobCreate, CrawlJobResponse
+from app.schemas.crawl import CrawlJobCreate, CrawlJobListResponse, CrawlJobResponse
 from app.services.crawl_job_service import CrawlJobService
 from app.workers.tasks.scrape import run_crawl_job
 
 router = APIRouter()
+
+
+@router.get("/jobs", response_model=CrawlJobListResponse)
+async def list_crawl_jobs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_async_session),
+) -> CrawlJobListResponse:
+    """List crawl jobs with pagination, newest first."""
+    service = CrawlJobService(session)
+    items, total = await service.list_jobs(skip, limit)
+    return CrawlJobListResponse(
+        items=[CrawlJobResponse.model_validate(j) for j in items],
+        total=total,
+    )
 
 
 @router.post(

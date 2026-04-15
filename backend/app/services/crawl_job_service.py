@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConfigNotFoundError, JobNotFoundError
@@ -20,6 +20,21 @@ class CrawlJobService:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def list_jobs(
+        self, skip: int = 0, limit: int = 50
+    ) -> tuple[list[CrawlJob], int]:
+        """List jobs with pagination, newest first."""
+        count_query = select(func.count()).select_from(CrawlJob)
+        total = (await self.session.execute(count_query)).scalar() or 0
+
+        result = await self.session.execute(
+            select(CrawlJob)
+            .order_by(CrawlJob.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), total
 
     async def create_and_enqueue(self, data: CrawlJobCreate) -> CrawlJob:
         """Create a job row ready for Celery enqueueing.
