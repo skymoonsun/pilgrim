@@ -37,6 +37,7 @@ dependencies = [
 
     # Utilities
     "python-multipart>=0.0.9",
+    "croniter>=2.0.0",
 ]
 
 [project.optional-dependencies]

@@ -63,3 +63,13 @@ class ExtractionError(AppException):
             f"Extraction failed for {url}: {reason}",
             "EXTRACTION_ERROR",
         )
+
+
+class ScheduleNotFoundError(AppException):
+    """Raised when a crawl schedule is not found."""
+
+    def __init__(self, schedule_id: str) -> None:
+        super().__init__(
+            f"CrawlSchedule with ID {schedule_id} not found",
+            "SCHEDULE_NOT_FOUND",
+        )

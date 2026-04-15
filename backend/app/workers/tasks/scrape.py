@@ -108,6 +108,10 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                 logger.info(
                     "Job %s succeeded in %.1fms", crawl_job_id, duration_ms
                 )
+
+                # ── Callback chain ───────────────────────────────
+                await _maybe_enqueue_callback(session, job)
+
                 return {
                     "crawl_job_id": crawl_job_id,
                     "status": "succeeded",
@@ -127,3 +131,47 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
         await engine.dispose()
 
     return asyncio.run(_run())
+
+
+async def _maybe_enqueue_callback(session, job) -> None:
+    """Check if this job's config is linked to a schedule with a callback."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.models.callback_config import CallbackConfig
+    from app.models.schedule_config_link import ScheduleConfigLink
+
+    # Find schedules linked to this config
+    result = await session.execute(
+        select(ScheduleConfigLink)
+        .options(selectinload(ScheduleConfigLink.schedule))
+        .where(ScheduleConfigLink.config_id == job.crawl_configuration_id)
+    )
+    links = list(result.scalars())
+
+    for link in links:
+        # Check if schedule has an active callback
+        cb_result = await session.execute(
+            select(CallbackConfig).where(
+                CallbackConfig.schedule_id == link.schedule_id,
+                CallbackConfig.is_active.is_(True),
+            )
+        )
+        callback_config = cb_result.scalar_one_or_none()
+        if callback_config and not callback_config.batch_results:
+            # Individual mode: fire immediately per job
+            from app.workers.tasks.callback import send_callback
+
+            send_callback.apply_async(
+                args=[
+                    str(job.id),
+                    str(callback_config.id),
+                    str(link.schedule_id),
+                ],
+                queue="maintenance",
+            )
+            logger.info(
+                "Enqueued callback for job %s → %s",
+                job.id, callback_config.url,
+            )
+

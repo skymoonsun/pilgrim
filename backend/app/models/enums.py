@@ -21,3 +21,20 @@ class CrawlJobStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class ScheduleStatus(str, Enum):
+    """Lifecycle status for a crawl schedule."""
+
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+class CallbackMethod(str, Enum):
+    """HTTP method for outbound callbacks."""
+
+    POST = "POST"
+    PUT = "PUT"
+    PATCH = "PATCH"

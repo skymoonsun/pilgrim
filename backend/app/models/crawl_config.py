@@ -74,11 +74,6 @@ class CrawlConfiguration(Base, UUIDMixin, TimestampMixin):
         back_populates="crawl_configuration",
         cascade="all, delete-orphan",
     )
-    schedules: Mapped[list["CrawlSchedule"]] = relationship(
-        "CrawlSchedule",
-        back_populates="crawl_configuration",
-        cascade="all, delete-orphan",
-    )
 
     def __repr__(self) -> str:
         return (

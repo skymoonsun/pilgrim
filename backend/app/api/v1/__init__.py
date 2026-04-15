@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import crawl, crawl_configs, health, scrape
+from app.api.v1.endpoints import crawl, crawl_configs, health, schedules, scrape
 
 api_router = APIRouter()
 
@@ -17,4 +17,7 @@ api_router.include_router(
 )
 api_router.include_router(
     crawl.router, prefix="/crawl", tags=["crawling"]
+)
+api_router.include_router(
+    schedules.router, prefix="/schedules", tags=["schedules"]
 )

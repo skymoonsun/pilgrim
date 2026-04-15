@@ -15,6 +15,8 @@ celery_app = Celery(
     backend=settings.celery_result_backend,
     include=[
         "app.workers.tasks.scrape",
+        "app.workers.tasks.schedule",
+        "app.workers.tasks.callback",
     ],
 )
 
@@ -41,6 +43,16 @@ celery_app.conf.update(
     # Queue routing
     task_routes={
         "pilgrim.scrape.run_job": {"queue": "crawl_default"},
+        "pilgrim.schedule.*": {"queue": "maintenance"},
+        "pilgrim.callback.*": {"queue": "maintenance"},
         "pilgrim.maintenance.*": {"queue": "maintenance"},
+    },
+
+    # Beat schedule — polling-based scheduler
+    beat_schedule={
+        "check-schedules-every-30s": {
+            "task": "pilgrim.schedule.check_schedules",
+            "schedule": 30.0,  # seconds
+        },
     },
 )
