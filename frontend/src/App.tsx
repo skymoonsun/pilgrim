@@ -8,6 +8,7 @@ import ConfigEdit from './pages/Configurations/ConfigEdit';
 import Schedules from './pages/Schedules/Schedules';
 import ScheduleCreate from './pages/Schedules/ScheduleCreate';
 import ScheduleDetail from './pages/Schedules/ScheduleDetail';
+import ScheduleEdit from './pages/Schedules/ScheduleEdit';
 import ScrapePlayground from './pages/ScrapePlayground/ScrapePlayground';
 import Jobs from './pages/Jobs/Jobs';
 import JobDetail from './pages/Jobs/JobDetail';
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="schedules" element={<Schedules />} />
         <Route path="schedules/new" element={<ScheduleCreate />} />
         <Route path="schedules/:id" element={<ScheduleDetail />} />
+        <Route path="schedules/:id/edit" element={<ScheduleEdit />} />
         <Route path="scrape" element={<ScrapePlayground />} />
         <Route path="jobs" element={<Jobs />} />
         <Route path="jobs/:id" element={<JobDetail />} />

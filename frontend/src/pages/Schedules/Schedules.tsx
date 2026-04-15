@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { schedulesApi } from '../../api/client';
 import type { Schedule } from '../../api/client';
-import { IconPlus, IconEye, IconPlay, IconTrash, IconCalendar, IconClock, IconPause } from '../../components/icons/Icons';
+import { IconPlus, IconEye, IconEdit, IconPlay, IconTrash, IconCalendar, IconClock, IconPause } from '../../components/icons/Icons';
 
 export default function Schedules() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -177,6 +177,9 @@ export default function Schedules() {
                     <div className="action-btns">
                       <Link to={`/schedules/${schedule.id}`} className="action-btn" title="View">
                         <IconEye size={16} />
+                      </Link>
+                      <Link to={`/schedules/${schedule.id}/edit`} className="action-btn" title="Edit">
+                        <IconEdit size={16} />
                       </Link>
                       <button className="action-btn" title="Trigger Now"
                         onClick={() => handleTrigger(schedule.id, schedule.name)}>

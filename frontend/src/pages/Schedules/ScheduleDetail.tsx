@@ -4,7 +4,7 @@ import { schedulesApi } from '../../api/client';
 import type { Schedule, CallbackLog } from '../../api/client';
 import {
   IconCalendar, IconClock, IconPlay, IconTrash, IconPause,
-  IconPlus, IconLink, IconWebhook, IconRefresh,
+  IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit,
 } from '../../components/icons/Icons';
 
 export default function ScheduleDetail() {
@@ -131,7 +131,10 @@ export default function ScheduleDetail() {
           <p className="page-subtitle">{schedule.description || 'No description'}</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-primary" onClick={handleTrigger}>
+          <Link to={`/schedules/${schedule.id}/edit`} className="btn btn-primary">
+            <IconEdit size={16} /> Edit
+          </Link>
+          <button className="btn btn-secondary" onClick={handleTrigger}>
             <IconPlay size={16} /> Trigger Now
           </button>
           <button className="btn btn-secondary" onClick={handleToggle}>
