@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.workers.tasks.scrape",
         "app.workers.tasks.schedule",
         "app.workers.tasks.callback",
+        "app.workers.tasks.email_notification",
     ],
 )
 
@@ -45,6 +46,7 @@ celery_app.conf.update(
         "pilgrim.scrape.run_job": {"queue": "crawl_default"},
         "pilgrim.schedule.*": {"queue": "maintenance"},
         "pilgrim.callback.*": {"queue": "maintenance"},
+        "pilgrim.email_notification.*": {"queue": "maintenance"},
         "pilgrim.maintenance.*": {"queue": "maintenance"},
     },
 

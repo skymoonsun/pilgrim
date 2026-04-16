@@ -14,11 +14,13 @@ from app.models.callback_config import CallbackConfig
 from app.models.crawl_config import CrawlConfiguration
 from app.models.crawl_job import CrawlJob
 from app.models.crawl_schedule import CrawlSchedule
+from app.models.email_notification_config import EmailNotificationConfig
 from app.models.enums import CallbackMethod, CrawlJobStatus
 from app.models.schedule_config_link import ScheduleConfigLink
 from app.models.schedule_url_target import ScheduleUrlTarget
 from app.schemas.schedule import (
     CallbackConfigCreate,
+    EmailNotificationConfigCreate,
     ScheduleCreate,
     ScheduleUpdate,
     ScheduleUrlCreate,
@@ -42,6 +44,7 @@ class ScheduleService:
             selectinload(CrawlSchedule.config_links)
             .selectinload(ScheduleConfigLink.url_targets),
             selectinload(CrawlSchedule.callback),
+            selectinload(CrawlSchedule.email_notification),
         )
 
     async def get_by_id(self, schedule_id: UUID) -> CrawlSchedule:
@@ -118,6 +121,11 @@ class ScheduleService:
         if data.callback:
             cb = self._build_callback(schedule.id, data.callback)
             self.session.add(cb)
+
+        # Email notification config
+        if data.email_notification:
+            en = self._build_email_notification(schedule.id, data.email_notification)
+            self.session.add(en)
 
         await self.session.commit()
 
@@ -205,6 +213,32 @@ class ScheduleService:
             await self.session.delete(schedule.callback)
             await self.session.commit()
 
+    # ── Email notification management ──────────────────────────────
+
+    async def set_email_notification(
+        self, schedule_id: UUID, data: EmailNotificationConfigCreate,
+    ) -> EmailNotificationConfig:
+        """Create or replace the email notification config for a schedule."""
+        schedule = await self.get_by_id(schedule_id)
+
+        # Upsert: delete existing, create new
+        if schedule.email_notification:
+            await self.session.delete(schedule.email_notification)
+            await self.session.flush()
+
+        en = self._build_email_notification(schedule_id, data)
+        self.session.add(en)
+        await self.session.commit()
+        await self.session.refresh(en)
+        return en
+
+    async def remove_email_notification(self, schedule_id: UUID) -> None:
+        """Remove the email notification config from a schedule."""
+        schedule = await self.get_by_id(schedule_id)
+        if schedule.email_notification:
+            await self.session.delete(schedule.email_notification)
+            await self.session.commit()
+
     # ── Trigger (manual or by beat) ──────────────────────────────
 
     async def trigger(self, schedule_id: UUID) -> list[CrawlJob]:
@@ -278,6 +312,22 @@ class ScheduleService:
             batch_results=data.batch_results,
             retry_count=data.retry_count,
             retry_delay_seconds=data.retry_delay_seconds,
+            is_active=data.is_active,
+        )
+
+    @staticmethod
+    def _build_email_notification(
+        schedule_id: UUID, data: EmailNotificationConfigCreate,
+    ) -> EmailNotificationConfig:
+        return EmailNotificationConfig(
+            schedule_id=schedule_id,
+            recipient_emails=data.recipient_emails,
+            subject_template=data.subject_template,
+            field_mapping=data.field_mapping,
+            include_metadata=data.include_metadata,
+            batch_results=data.batch_results,
+            on_success=data.on_success,
+            on_failure=data.on_failure,
             is_active=data.is_active,
         )
 

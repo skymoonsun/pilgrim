@@ -10,6 +10,9 @@ from app.schemas.schedule import (
     CallbackConfigCreate,
     CallbackConfigResponse,
     CallbackLogResponse,
+    EmailNotificationConfigCreate,
+    EmailNotificationConfigResponse,
+    EmailNotificationLogResponse,
     ScheduleConfigLinkResponse,
     ScheduleCreate,
     ScheduleListResponse,
@@ -19,6 +22,7 @@ from app.schemas.schedule import (
     ScheduleUrlResponse,
 )
 from app.services.callback_service import CallbackService
+from app.services.email_notification_service import EmailNotificationService
 from app.services.schedule_service import ScheduleService
 
 router = APIRouter()
@@ -197,6 +201,53 @@ async def get_callback_logs(
     return [CallbackLogResponse.model_validate(log) for log in logs]
 
 
+# ── Email notification management ─────────────────────────────────
+
+
+@router.put(
+    "/{schedule_id}/email-notification",
+    response_model=EmailNotificationConfigResponse,
+)
+async def set_email_notification(
+    body: EmailNotificationConfigCreate,
+    schedule_id: UUID = Path(...),
+    session: AsyncSession = Depends(get_async_session),
+) -> EmailNotificationConfigResponse:
+    """Create or replace the email notification config for a schedule."""
+    service = ScheduleService(session)
+    en = await service.set_email_notification(schedule_id, body)
+    return EmailNotificationConfigResponse.model_validate(en)
+
+
+@router.delete(
+    "/{schedule_id}/email-notification",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_email_notification(
+    schedule_id: UUID = Path(...),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Remove the email notification config from a schedule."""
+    service = ScheduleService(session)
+    await service.remove_email_notification(schedule_id)
+
+
+@router.get(
+    "/{schedule_id}/email-notification/logs",
+    response_model=list[EmailNotificationLogResponse],
+)
+async def get_email_notification_logs(
+    schedule_id: UUID = Path(...),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[EmailNotificationLogResponse]:
+    """Get email notification logs for a schedule."""
+    service = EmailNotificationService(session)
+    logs = await service.get_logs(schedule_id, skip, limit)
+    return [EmailNotificationLogResponse.model_validate(log) for log in logs]
+
+
 # ── Response builder ─────────────────────────────────────────────
 
 
@@ -235,6 +286,11 @@ def _to_response(schedule) -> ScheduleResponse:
         callback=(
             CallbackConfigResponse.model_validate(schedule.callback)
             if schedule.callback
+            else None
+        ),
+        email_notification=(
+            EmailNotificationConfigResponse.model_validate(schedule.email_notification)
+            if schedule.email_notification
             else None
         ),
     )

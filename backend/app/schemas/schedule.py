@@ -7,7 +7,7 @@ has its own URL target set.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ── URL targets ──────────────────────────────────────────────────
@@ -139,6 +139,91 @@ class ScheduleConfigLinkResponse(BaseModel):
     url_targets: list[ScheduleUrlResponse] = []
 
 
+# ── Email notification config ────────────────────────────────────
+
+
+class EmailNotificationConfigCreate(BaseModel):
+    """Create or replace an email notification config on a schedule."""
+
+    recipient_emails: list[str] = Field(
+        ..., min_length=1, max_length=20,
+        description="Email addresses to notify",
+    )
+    subject_template: str = Field(
+        default="Pilgrim: {{schedule_name}} completed",
+        max_length=500,
+        description="Subject line with optional {{var}} placeholders",
+    )
+    field_mapping: dict = Field(
+        default_factory=dict,
+        description="Payload field mapping (same syntax as callback)",
+    )
+    include_metadata: bool = Field(
+        default=True,
+        description="Include schedule/job metadata in email body",
+    )
+    batch_results: bool = Field(
+        default=True,
+        description="True = all results in one email; False = one per job",
+    )
+    on_success: bool = Field(
+        default=True,
+        description="Send email on job success",
+    )
+    on_failure: bool = Field(
+        default=True,
+        description="Send email on job failure",
+    )
+    is_active: bool = Field(default=True)
+
+    @field_validator("recipient_emails")
+    @classmethod
+    def validate_emails(cls, v: list[str]) -> list[str]:
+        for email in v:
+            if "@" not in email or "." not in email.split("@")[-1]:
+                raise ValueError(f"Invalid email address: {email}")
+        return v
+
+
+class EmailNotificationConfigResponse(BaseModel):
+    """Serialised email notification config."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    schedule_id: UUID
+    recipient_emails: list[str]
+    subject_template: str
+    field_mapping: dict
+    include_metadata: bool
+    batch_results: bool
+    on_success: bool
+    on_failure: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class EmailNotificationLogResponse(BaseModel):
+    """Serialised email notification execution log."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email_notification_config_id: UUID
+    crawl_job_id: UUID | None
+    schedule_id: UUID
+    recipients: list[str]
+    subject: str
+    trigger_reason: str
+    success: bool
+    error_message: str | None
+    smtp_response_code: int | None
+    duration_ms: float
+    attempt_number: int
+    created_at: datetime
+
+
 # ── Schedule ─────────────────────────────────────────────────────
 
 
@@ -178,6 +263,9 @@ class ScheduleCreate(BaseModel):
     callback: CallbackConfigCreate | None = Field(
         None, description="Optional webhook callback"
     )
+    email_notification: EmailNotificationConfigCreate | None = Field(
+        None, description="Optional email notification"
+    )
 
 
 class ScheduleUpdate(BaseModel):
@@ -214,6 +302,7 @@ class ScheduleResponse(BaseModel):
     # Nested
     config_links: list[ScheduleConfigLinkResponse] = []
     callback: CallbackConfigResponse | None = None
+    email_notification: EmailNotificationConfigResponse | None = None
 
 
 class ScheduleListResponse(BaseModel):

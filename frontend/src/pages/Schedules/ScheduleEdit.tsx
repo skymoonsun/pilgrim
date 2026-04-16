@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { schedulesApi, configsApi } from '../../api/client';
 import type { CrawlConfig, Schedule } from '../../api/client';
-import { IconPlus, IconTrash, IconCalendar } from '../../components/icons/Icons';
+import { IconPlus, IconTrash, IconCalendar, IconMail } from '../../components/icons/Icons';
 
 interface ConfigEntry {
   config_link_id: string | null; // null = newly added
@@ -35,6 +35,14 @@ export default function ScheduleEdit() {
     callbackFieldMapping: '{}',
     callbackBatchResults: true,
     callbackRetryCount: '3',
+    enableEmailNotification: false,
+    emailRecipients: '',
+    emailSubjectTemplate: 'Pilgrim: {{schedule_name}} completed',
+    emailFieldMapping: '{}',
+    emailOnSuccess: true,
+    emailOnFailure: true,
+    emailBatchResults: true,
+    emailIncludeMetadata: true,
   });
 
   useEffect(() => {
@@ -79,6 +87,14 @@ export default function ScheduleEdit() {
       callbackFieldMapping: s.callback?.field_mapping ? JSON.stringify(s.callback.field_mapping, null, 2) : '{}',
       callbackBatchResults: s.callback?.batch_results ?? true,
       callbackRetryCount: s.callback?.retry_count?.toString() || '3',
+      enableEmailNotification: !!s.email_notification,
+      emailRecipients: s.email_notification?.recipient_emails?.join(', ') || '',
+      emailSubjectTemplate: s.email_notification?.subject_template || 'Pilgrim: {{schedule_name}} completed',
+      emailFieldMapping: s.email_notification?.field_mapping ? JSON.stringify(s.email_notification.field_mapping, null, 2) : '{}',
+      emailOnSuccess: s.email_notification?.on_success ?? true,
+      emailOnFailure: s.email_notification?.on_failure ?? true,
+      emailBatchResults: s.email_notification?.batch_results ?? true,
+      emailIncludeMetadata: s.email_notification?.include_metadata ?? true,
     });
   }
 
@@ -209,6 +225,23 @@ export default function ScheduleEdit() {
         };
       }
 
+      let email_notification = undefined;
+      if (form.enableEmailNotification && form.emailRecipients.trim()) {
+        let email_field_mapping = {};
+        try { email_field_mapping = JSON.parse(form.emailFieldMapping || '{}'); }
+        catch { setError('Invalid JSON in email field mapping'); setSaving(false); return; }
+
+        email_notification = {
+          recipient_emails: form.emailRecipients.split(',').map((e: string) => e.trim()).filter((e: string) => e),
+          subject_template: form.emailSubjectTemplate,
+          field_mapping: email_field_mapping,
+          include_metadata: form.emailIncludeMetadata,
+          batch_results: form.emailBatchResults,
+          on_success: form.emailOnSuccess,
+          on_failure: form.emailOnFailure,
+        };
+      }
+
       const created = await schedulesApi.create({
         name: form.name,
         description: form.description || null,
@@ -218,6 +251,7 @@ export default function ScheduleEdit() {
         interval_seconds: form.scheduleType === 'interval' ? parseInt(form.interval_minutes) * 60 : null,
         config_links,
         callback,
+        email_notification,
       });
 
       navigate(`/schedules/${created.id}`);
@@ -391,6 +425,69 @@ export default function ScheduleEdit() {
                         value={form.callbackRetryCount}
                         onChange={(e) => updateField('callbackRetryCount', e.target.value)} />
                     </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Email Notification */}
+            <div className="card" style={{ padding: 28 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h3 className="card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <IconMail size={18} /> Email Notification
+                </h3>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.enableEmailNotification}
+                    onChange={(e) => updateField('enableEmailNotification', e.target.checked)} />
+                  Enable
+                </label>
+              </div>
+              {form.enableEmailNotification && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Recipients (comma-separated)</label>
+                    <input type="text" className="form-input" placeholder="user@example.com, admin@example.com"
+                      value={form.emailRecipients}
+                      onChange={(e) => updateField('emailRecipients', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Subject Template</label>
+                    <input type="text" className="form-input" value={form.emailSubjectTemplate}
+                      onChange={(e) => updateField('emailSubjectTemplate', e.target.value)} />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                      Use {'{{schedule_name}}'}, {'{{job_id}}'}, etc. as placeholders
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Field Mapping (JSON)</label>
+                    <textarea className="form-input" rows={4} value={form.emailFieldMapping}
+                      onChange={(e) => updateField('emailFieldMapping', e.target.value)}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', whiteSpace: 'pre' }} />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                      Use $.data.*, $.url, $.metadata.* paths (same as callback)
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.emailOnSuccess}
+                        onChange={(e) => updateField('emailOnSuccess', e.target.checked)} />
+                      On Success
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.emailOnFailure}
+                        onChange={(e) => updateField('emailOnFailure', e.target.checked)} />
+                      On Failure
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.emailBatchResults}
+                        onChange={(e) => updateField('emailBatchResults', e.target.checked)} />
+                      Batch Results
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.emailIncludeMetadata}
+                        onChange={(e) => updateField('emailIncludeMetadata', e.target.checked)} />
+                      Include Metadata
+                    </label>
                   </div>
                 </>
               )}

@@ -76,6 +76,17 @@ class CrawlSchedule(Base, UUIDMixin, TimestampMixin):
         back_populates="schedule",
         cascade="all, delete-orphan",
     )
+    email_notification: Mapped["EmailNotificationConfig | None"] = relationship(
+        "EmailNotificationConfig",
+        back_populates="schedule",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    email_notification_logs: Mapped[list["EmailNotificationLog"]] = relationship(
+        "EmailNotificationLog",
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         schedule_type = (

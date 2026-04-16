@@ -122,6 +122,39 @@ export interface CallbackLog {
   created_at: string;
 }
 
+// ── Email notification types ──────────────────────────────────
+
+export interface EmailNotificationConfig {
+  id: string;
+  schedule_id: string;
+  recipient_emails: string[];
+  subject_template: string;
+  field_mapping: Record<string, unknown>;
+  include_metadata: boolean;
+  batch_results: boolean;
+  on_success: boolean;
+  on_failure: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailNotificationLog {
+  id: string;
+  email_notification_config_id: string;
+  crawl_job_id: string | null;
+  schedule_id: string;
+  recipients: string[];
+  subject: string;
+  trigger_reason: string;
+  success: boolean;
+  error_message: string | null;
+  smtp_response_code: number | null;
+  duration_ms: number;
+  attempt_number: number;
+  created_at: string;
+}
+
 export interface Schedule {
   id: string;
   name: string;
@@ -138,6 +171,7 @@ export interface Schedule {
   updated_at: string;
   config_links: ScheduleConfigLink[];
   callback: CallbackConfig | null;
+  email_notification: EmailNotificationConfig | null;
 }
 
 export interface ScheduleListResponse {
@@ -167,6 +201,15 @@ export interface ScheduleCreateData {
     batch_results?: boolean;
     retry_count?: number;
     retry_delay_seconds?: number;
+  } | null;
+  email_notification?: {
+    recipient_emails: string[];
+    subject_template?: string;
+    field_mapping?: Record<string, unknown>;
+    include_metadata?: boolean;
+    batch_results?: boolean;
+    on_success?: boolean;
+    on_failure?: boolean;
   } | null;
 }
 
@@ -306,5 +349,22 @@ export const schedulesApi = {
   getCallbackLogs: (scheduleId: string, skip = 0, limit = 50) =>
     request<CallbackLog[]>(
       `/schedules/${scheduleId}/callback/logs?skip=${skip}&limit=${limit}`
+    ),
+
+  // Email notification management
+  setEmailNotification: (scheduleId: string, data: Omit<EmailNotificationConfig, 'id' | 'schedule_id' | 'created_at' | 'updated_at'>) =>
+    request<EmailNotificationConfig>(`/schedules/${scheduleId}/email-notification`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  removeEmailNotification: (scheduleId: string) =>
+    request<void>(`/schedules/${scheduleId}/email-notification`, {
+      method: 'DELETE',
+    }),
+
+  getEmailNotificationLogs: (scheduleId: string, skip = 0, limit = 50) =>
+    request<EmailNotificationLog[]>(
+      `/schedules/${scheduleId}/email-notification/logs?skip=${skip}&limit=${limit}`
     ),
 };

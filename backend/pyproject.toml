@@ -32,6 +32,9 @@ dependencies = [
     # HTTP client (for API clients, not HTML scraping)
     "httpx>=0.27.0",
 
+    # Email (async SMTP for notifications)
+    "aiosmtplib>=3.0.0",
+
     # Logging
     "structlog>=24.1.0",
 

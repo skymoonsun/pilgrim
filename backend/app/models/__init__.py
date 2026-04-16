@@ -10,6 +10,8 @@ from app.models.schedule_config_link import ScheduleConfigLink
 from app.models.schedule_url_target import ScheduleUrlTarget
 from app.models.callback_config import CallbackConfig
 from app.models.callback_log import CallbackLog
+from app.models.email_notification_config import EmailNotificationConfig
+from app.models.email_notification_log import EmailNotificationLog
 from app.models.seed_version import SeedVersion
 
 __all__ = [
@@ -28,5 +30,7 @@ __all__ = [
     "ScheduleUrlTarget",
     "CallbackConfig",
     "CallbackLog",
+    "EmailNotificationConfig",
+    "EmailNotificationLog",
     "SeedVersion",
 ]

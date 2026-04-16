@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { schedulesApi } from '../../api/client';
-import type { Schedule, CallbackLog } from '../../api/client';
+import type { Schedule, CallbackLog, EmailNotificationLog } from '../../api/client';
 import {
   IconCalendar, IconClock, IconPlay, IconTrash, IconPause,
-  IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit,
+  IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit, IconMail,
 } from '../../components/icons/Icons';
 
 export default function ScheduleDetail() {
@@ -12,6 +12,7 @@ export default function ScheduleDetail() {
   const navigate = useNavigate();
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [logs, setLogs] = useState<CallbackLog[]>([]);
+  const [emailLogs, setEmailLogs] = useState<EmailNotificationLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -30,6 +31,10 @@ export default function ScheduleDetail() {
       if (res.callback) {
         const logsRes = await schedulesApi.getCallbackLogs(scheduleId, 0, 20);
         setLogs(logsRes);
+      }
+      if (res.email_notification) {
+        const emailLogsRes = await schedulesApi.getEmailNotificationLogs(scheduleId, 0, 20);
+        setEmailLogs(emailLogsRes);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -147,7 +152,7 @@ export default function ScheduleDetail() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
 
         {/* ── Schedule Info ── */}
         <div className="card" style={{ padding: 28 }}>
@@ -199,6 +204,45 @@ export default function ScheduleDetail() {
             </div>
           ) : (
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No callback configured</p>
+          )}
+        </div>
+
+        {/* ── Email Notification ── */}
+        <div className="card" style={{ padding: 28 }}>
+          <h3 className="card-title" style={{ marginBottom: 20 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <IconMail size={18} /> Email Notification
+            </span>
+          </h3>
+          {schedule.email_notification ? (
+            <div className="detail-grid">
+              <Row label="Recipients" value={
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {schedule.email_notification.recipient_emails.map((email, i) => (
+                    <span key={i} className="badge badge--queued" style={{ fontSize: '0.75rem' }}>{email}</span>
+                  ))}
+                </div>
+              } />
+              <Row label="Subject" value={schedule.email_notification.subject_template} />
+              <Row label="Active" value={
+                <span className={`badge badge--${schedule.email_notification.is_active ? 'success' : 'cancelled'}`}>
+                  {schedule.email_notification.is_active ? 'Yes' : 'No'}
+                </span>
+              } />
+              <Row label="On Success" value={
+                <span className={`badge badge--${schedule.email_notification.on_success ? 'success' : 'cancelled'}`}>
+                  {schedule.email_notification.on_success ? 'Yes' : 'No'}
+                </span>
+              } />
+              <Row label="On Failure" value={
+                <span className={`badge badge--${schedule.email_notification.on_failure ? 'success' : 'cancelled'}`}>
+                  {schedule.email_notification.on_failure ? 'Yes' : 'No'}
+                </span>
+              } />
+              <Row label="Batch" value={schedule.email_notification.batch_results ? 'Yes' : 'No'} />
+            </div>
+          ) : (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No email notification configured</p>
           )}
         </div>
       </div>
@@ -303,6 +347,54 @@ export default function ScheduleDetail() {
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
                     {log.response_status || '—'}
+                  </td>
+                  <td style={{ fontSize: '0.8rem' }}>{log.duration_ms}ms</td>
+                  <td style={{ fontSize: '0.8rem' }}>#{log.attempt_number}</td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--status-failed)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {log.error_message || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Email Notification Logs ── */}
+      {schedule.email_notification && emailLogs.length > 0 && (
+        <div className="card table-card" style={{ marginTop: 24 }}>
+          <div style={{ padding: '18px 24px 0' }}>
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <IconMail size={16} /> Email Notification Logs
+              <button className="action-btn" onClick={() => loadSchedule(schedule!.id)}>
+                <IconRefresh size={14} />
+              </button>
+            </h3>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Trigger</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Attempt</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {emailLogs.map((log) => (
+                <tr key={log.id}>
+                  <td style={{ fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString()}</td>
+                  <td>
+                    <span className={`badge badge--${log.trigger_reason === 'success' ? 'success' : 'failed'}`}>
+                      {log.trigger_reason}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge badge--${log.success ? 'success' : 'failed'}`}>
+                      {log.success ? 'Sent' : 'Failed'}
+                    </span>
                   </td>
                   <td style={{ fontSize: '0.8rem' }}>{log.duration_ms}ms</td>
                   <td style={{ fontSize: '0.8rem' }}>#{log.attempt_number}</td>

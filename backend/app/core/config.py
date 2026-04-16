@@ -71,6 +71,32 @@ class Settings(BaseSettings):
         validation_alias="PILGRIM_SCRAPLING_BROWSER_INSTALL",
     )
 
+    # ── SMTP ──────────────────────────────────────────────────────
+    smtp_host: str = Field(
+        default="localhost",
+        validation_alias="PILGRIM_SMTP_HOST",
+    )
+    smtp_port: int = Field(
+        default=587,
+        validation_alias="PILGRIM_SMTP_PORT",
+    )
+    smtp_username: str | None = Field(
+        default=None,
+        validation_alias="PILGRIM_SMTP_USERNAME",
+    )
+    smtp_password: str | None = Field(
+        default=None,
+        validation_alias="PILGRIM_SMTP_PASSWORD",
+    )
+    smtp_use_tls: bool = Field(
+        default=True,
+        validation_alias="PILGRIM_SMTP_USE_TLS",
+    )
+    smtp_from_address: str = Field(
+        default="pilgrim@localhost",
+        validation_alias="PILGRIM_SMTP_FROM_ADDRESS",
+    )
+
     # ── Observability ────────────────────────────────────────────
     sentry_dsn: str | None = Field(default=None, validation_alias="SENTRY_DSN")
 
