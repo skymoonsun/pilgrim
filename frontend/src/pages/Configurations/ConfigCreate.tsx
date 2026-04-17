@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { configsApi } from '../../api/client';
-import { IconPlus } from '../../components/icons/Icons';
+import { configsApi, aiApi } from '../../api/client';
+import { IconPlus, IconSparkle } from '../../components/icons/Icons';
 
 const PROFILES = ['fetcher', 'http_session', 'stealth', 'dynamic', 'spider'];
 
@@ -24,8 +24,51 @@ export default function ConfigCreate() {
     custom_headers: '',
   });
 
+  // AI mode state
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiChecked, setAiChecked] = useState(false);
+  const [aiExpanded, setAiExpanded] = useState(false);
+  const [aiUrl, setAiUrl] = useState('');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  useEffect(() => {
+    aiApi.status().then((res) => {
+      setAiAvailable(res.enabled && res.reachable);
+      setAiChecked(true);
+    }).catch(() => {
+      // AI status endpoint unreachable — still show button
+      // so user knows the feature exists; error shown on generate attempt
+      setAiAvailable(false);
+      setAiChecked(true);
+    });
+  }, []);
+
   function updateField(field: string, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleAiGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    setAiError('');
+    setAiLoading(true);
+
+    try {
+      const res = await aiApi.generateSpec({
+        url: aiUrl,
+        description: aiDescription,
+        scraper_profile: form.scraper_profile,
+      });
+      setForm((prev) => ({
+        ...prev,
+        extraction_spec: JSON.stringify(res.extraction_spec, null, 2),
+      }));
+      setAiError('');
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'AI generation failed');
+    }
+    setAiLoading(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -211,7 +254,114 @@ export default function ConfigCreate() {
           {/* Right column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div className="card" style={{ padding: 28, flex: 1 }}>
-              <h3 className="card-title" style={{ marginBottom: 20 }}>Extraction Spec *</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h3 className="card-title" style={{ marginBottom: 0 }}>Extraction Spec *</h3>
+                {!aiChecked ? (
+                  <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                ) : aiAvailable ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setAiExpanded(!aiExpanded)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.8rem',
+                      color: aiExpanded ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                      border: aiExpanded ? '1px solid var(--accent-primary-dim)' : '1px solid var(--border-color)',
+                      background: aiExpanded ? 'var(--accent-primary-dim)' : 'transparent',
+                    }}
+                  >
+                    <IconSparkle size={14} />
+                    Generate with AI
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled
+                    title="AI service is not available. Check that PILGRIM_AI_ENABLED=true and Ollama is running."
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.8rem',
+                      color: 'var(--text-muted)',
+                      border: '1px solid var(--border-color)',
+                      background: 'transparent',
+                      opacity: 0.5,
+                      cursor: 'not-allowed',
+                    }}
+                  >
+                    <IconSparkle size={14} />
+                    AI unavailable
+                  </button>
+                )}
+              </div>
+
+              {aiExpanded && (
+                <div style={{
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 16,
+                  marginBottom: 16,
+                  border: '1px solid var(--border-color)',
+                }}>
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Target URL</label>
+                    <input
+                      type="url"
+                      className="form-input"
+                      placeholder="https://example.com/product/123"
+                      value={aiUrl}
+                      onChange={(e) => setAiUrl(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>What to extract?</label>
+                    <textarea
+                      className="form-input"
+                      placeholder="e.g. Product name, price, stock status, and images"
+                      value={aiDescription}
+                      onChange={(e) => setAiDescription(e.target.value)}
+                      rows={2}
+                      style={{ resize: 'vertical' }}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading || !aiUrl || !aiDescription}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      justifyContent: 'center',
+                      width: '100%',
+                    }}
+                  >
+                    {aiLoading ? (
+                      <><div className="spinner" /> Generating...</>
+                    ) : (
+                      <><IconSparkle size={14} /> Generate Spec</>
+                    )}
+                  </button>
+                  {aiError && (
+                    <div style={{
+                      marginTop: 10,
+                      color: 'var(--status-failed)',
+                      fontSize: '0.8rem',
+                    }}>
+                      {aiError}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <textarea
                 className="form-input"
                 value={form.extraction_spec}

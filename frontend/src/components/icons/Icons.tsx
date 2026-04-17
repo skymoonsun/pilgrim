@@ -262,3 +262,11 @@ export function IconMail({ size, className }: IconProps = defaultProps) {
   );
 }
 
+export function IconSparkle({ size, className }: IconProps = defaultProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 22l-2.09-6.26L4 10l5.91-1.74L12 2z" />
+    </svg>
+  );
+}
+

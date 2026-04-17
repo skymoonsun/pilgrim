@@ -97,6 +97,34 @@ class Settings(BaseSettings):
         validation_alias="PILGRIM_SMTP_FROM_ADDRESS",
     )
 
+    # ── AI / LLM ────────────────────────────────────────────────
+    ai_enabled: bool = Field(
+        default=False,
+        validation_alias="PILGRIM_AI_ENABLED",
+    )
+    llm_provider: Literal["ollama"] = Field(
+        default="ollama",
+        validation_alias="PILGRIM_LLM_PROVIDER",
+    )
+    ollama_base_url: str = Field(
+        default="http://host.docker.internal:11434",
+        validation_alias="PILGRIM_OLLAMA_BASE_URL",
+    )
+    ollama_model: str = Field(
+        default="llama3.2",
+        validation_alias="PILGRIM_OLLAMA_MODEL",
+    )
+    ollama_token: str | None = Field(
+        default=None,
+        validation_alias="PILGRIM_OLLAMA_TOKEN",
+    )
+    ai_max_html_chars: int = Field(
+        default=30000,
+        ge=1000,
+        le=500000,
+        validation_alias="PILGRIM_AI_MAX_HTML_CHARS",
+    )
+
     # ── Observability ────────────────────────────────────────────
     sentry_dsn: str | None = Field(default=None, validation_alias="SENTRY_DSN")
 

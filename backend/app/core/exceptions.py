@@ -73,3 +73,56 @@ class ScheduleNotFoundError(AppException):
             f"CrawlSchedule with ID {schedule_id} not found",
             "SCHEDULE_NOT_FOUND",
         )
+
+
+# ── AI / LLM exceptions ────────────────────────────────────────
+
+
+class AIDisabledError(AppException):
+    """Raised when AI features are requested but not enabled."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "AI features are disabled. Set PILGRIM_AI_ENABLED=true to enable.",
+            "AI_DISABLED",
+        )
+
+
+class AILLMError(AppException):
+    """Raised when the LLM provider returns an error."""
+
+    def __init__(self, provider: str, reason: str) -> None:
+        super().__init__(
+            f"LLM provider '{provider}' error: {reason}",
+            "AI_LLM_ERROR",
+        )
+
+
+class AIConnectionError(AppException):
+    """Raised when the LLM provider is unreachable."""
+
+    def __init__(self, provider: str, url: str) -> None:
+        super().__init__(
+            f"Cannot reach LLM provider '{provider}' at {url}",
+            "AI_CONNECTION_ERROR",
+        )
+
+
+class AIInvalidPageError(AppException):
+    """Raised when the target URL does not return HTML."""
+
+    def __init__(self, url: str, reason: str) -> None:
+        super().__init__(
+            f"Invalid page at {url}: {reason}",
+            "AI_INVALID_PAGE",
+        )
+
+
+class AIEmptySpecError(AppException):
+    """Raised when the LLM returns an empty extraction spec."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "LLM returned an empty extraction spec",
+            "AI_EMPTY_SPEC",
+        )

@@ -25,10 +25,15 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 ## ✨ Features
 
 - **Config-driven scraping** — Define extraction rules (CSS/XPath selectors) once, reuse across multiple URLs
+- **AI-powered config generation** — Describe what to extract in natural language; AI generates the selectors for you
 - **Scrapling-first** — Uses [Scrapling](https://github.com/D4Vinci/Scrapling) for fetching & parsing with multiple profiles (static, stealth, dynamic)
+- **Schedule management** — Cron & interval-based scheduling with config-to-URL mapping
+- **Webhook callbacks** — Post results to external services with field mapping and retry logic
+- **Email notifications** — SMTP-based notifications on job success or failure with templated emails
 - **React dashboard** — Modern dark-themed UI for managing configs, testing scrapes, and monitoring jobs
 - **Async job execution** — Heavy scraping runs via Celery workers, not the API process
 - **Sync scrape endpoint** — Quick one-off test scrapes directly from the API
+- **Provider-agnostic LLM integration** — Ollama today, other providers via the abstraction layer
 - **Versioned seed system** — Migration-like seed runner for managing initial data
 - **PostgreSQL as source of truth** — Configs, jobs, results, and schedules all persisted
 - **Full Docker Compose stack** — API, worker, beat, frontend, PostgreSQL, Redis in one command
@@ -117,6 +122,18 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | `POST` | `/api/v1/scrape/` | Synchronous scrape (config_id + url) |
 | `POST` | `/api/v1/crawl/jobs` | Enqueue async crawl job |
 | `GET` | `/api/v1/crawl/jobs/{id}` | Poll job status |
+| `POST` | `/api/v1/schedules/` | Create a schedule |
+| `GET` | `/api/v1/schedules/` | List all schedules |
+| `GET` | `/api/v1/schedules/{id}` | Get schedule by ID |
+| `PATCH` | `/api/v1/schedules/{id}` | Update a schedule |
+| `DELETE` | `/api/v1/schedules/{id}` | Delete a schedule |
+| `POST` | `/api/v1/schedules/{id}/trigger` | Manually trigger a schedule |
+| `PUT` | `/api/v1/schedules/{id}/callback` | Set or update a webhook callback |
+| `DELETE` | `/api/v1/schedules/{id}/callback` | Remove a webhook callback |
+| `PUT` | `/api/v1/schedules/{id}/email-notification` | Set or update email notification |
+| `DELETE` | `/api/v1/schedules/{id}/email-notification` | Remove email notification |
+| `POST` | `/api/v1/ai/generate-spec` | Generate extraction spec via AI |
+| `GET` | `/api/v1/ai/status` | Check AI feature availability |
 
 ### Example: Create a Config & Scrape
 
@@ -233,6 +250,104 @@ All configuration is managed via environment variables. See [`.env.example`](.en
 | `LOG_LEVEL` | Logging level | `INFO` |
 | `CELERY_SOFT_TIME_LIMIT` | Task soft timeout (seconds) | `300` |
 | `CELERY_TIME_LIMIT` | Task hard timeout (seconds) | `360` |
+| `PILGRIM_AI_ENABLED` | Enable AI-powered features | `false` |
+| `PILGRIM_LLM_PROVIDER` | LLM provider (`ollama`) | `ollama` |
+| `PILGRIM_OLLAMA_BASE_URL` | Ollama API base URL | `http://host.docker.internal:11434` |
+| `PILGRIM_OLLAMA_MODEL` | Ollama model name | `llama3.2` |
+| `PILGRIM_OLLAMA_TOKEN` | Ollama bearer token (optional) | — |
+| `PILGRIM_AI_MAX_HTML_CHARS` | Max HTML chars sent to LLM | `30000` |
+
+## 🤖 AI-Powered Config Generation
+
+Pilgrim can generate extraction specs automatically using an LLM. Instead of writing CSS/XPath selectors by hand, describe what you want to extract in natural language and let the AI do the work.
+
+### How it works
+
+1. You provide a **target URL** and a **natural language description** (e.g., "Extract the product name, price, and availability")
+2. Pilgrim fetches the page using Scrapling, sanitizes the HTML, and sends it to the configured LLM
+3. The LLM generates an `extraction_spec` with CSS/XPath selectors
+4. You review and optionally edit the result before saving
+
+### Setup (Ollama)
+
+1. [Install Ollama](https://ollama.com) and pull a model:
+   ```bash
+   ollama pull llama3.2
+   # or for better structured output:
+   ollama pull qwen2.5:7b
+   ```
+2. Enable AI in your `.env`:
+   ```env
+   PILGRIM_AI_ENABLED=true
+   PILGRIM_OLLAMA_BASE_URL=http://host.docker.internal:11434
+   PILGRIM_OLLAMA_MODEL=llama3.2
+   ```
+3. The dashboard will show an **"AI ile Oluştur"** button in the config creation page
+
+### API Usage
+
+```bash
+# Check AI availability
+curl http://localhost:8000/api/v1/ai/status
+
+# Generate an extraction spec
+curl -X POST http://localhost:8000/api/v1/ai/generate-spec \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/product/123",
+    "description": "Extract the product title, price, stock status, and image URLs"
+  }'
+```
+
+### Provider architecture
+
+The LLM integration uses a provider abstraction (`app/integrations/llm_base.py`). Ollama is the first implementation, but adding new providers (OpenAI, Anthropic, etc.) requires only:
+
+1. A new subclass of `LLMProvider`
+2. A new `elif` branch in `create_llm_provider()`
+3. Corresponding config settings
+
+No changes to the service or API layer are needed.
+
+### Scraper profile selection
+
+The AI endpoint accepts an optional `scraper_profile` parameter. Use `fetcher` (default) for static pages or `http_session` for sites requiring cookies. The `stealth` and `dynamic` profiles require browser binaries that are only available in the worker container.
+
+## 📧 Email Notifications
+
+Schedules can send email notifications when jobs complete. Configure SMTP settings and attach email notifications to any schedule:
+
+```bash
+# Set up email notification for a schedule
+curl -X PUT http://localhost:8000/api/v1/schedules/{id}/email-notification \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_emails": ["team@example.com"],
+    "subject_template": "Crawl Complete: {schedule_name}",
+    "on_success": true,
+    "on_failure": true
+  }'
+```
+
+Email notifications support field mapping (same syntax as webhook callbacks) to include extracted data in the email body.
+
+## 🔗 Webhook Callbacks
+
+Schedules can trigger HTTP callbacks (webhooks) when jobs complete. Configure the URL, method, headers, and field mapping:
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/schedules/{id}/callback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-service.example.com/webhook",
+    "method": "POST",
+    "field_mapping": {
+      "product_name": "$.data.title",
+      "price": "$.data.price",
+      "source_url": "$.url"
+    }
+  }'
+```
 
 ## 🐳 Docker
 

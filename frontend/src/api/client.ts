@@ -219,6 +219,27 @@ export interface TriggerResponse {
   job_ids: string[];
 }
 
+// ── AI types ──────────────────────────────────────────────
+
+export interface ExtractionSpecAIRequest {
+  url: string;
+  description: string;
+  scraper_profile?: string;
+}
+
+export interface ExtractionSpecAIResponse {
+  extraction_spec: Record<string, unknown>;
+  model_used: string;
+  html_length: number;
+  sanitized_length: number;
+}
+
+export interface AIStatusResponse {
+  enabled: boolean;
+  provider: string | null;
+  reachable: boolean;
+}
+
 // ── Generic fetch helper ─────────────────────────────────
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -367,4 +388,16 @@ export const schedulesApi = {
     request<EmailNotificationLog[]>(
       `/schedules/${scheduleId}/email-notification/logs?skip=${skip}&limit=${limit}`
     ),
+};
+
+// ── AI ─────────────────────────────────────────────────────
+
+export const aiApi = {
+  status: () => request<AIStatusResponse>('/ai/status'),
+
+  generateSpec: (data: ExtractionSpecAIRequest) =>
+    request<ExtractionSpecAIResponse>('/ai/generate-spec', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
