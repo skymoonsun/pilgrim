@@ -282,7 +282,7 @@ Pilgrim can generate extraction specs automatically using an LLM. Instead of wri
    PILGRIM_OLLAMA_BASE_URL=http://host.docker.internal:11434
    PILGRIM_OLLAMA_MODEL=llama3.2
    ```
-3. The dashboard will show an **"AI ile Oluştur"** button in the config creation page
+3. The dashboard will show an **"Generate with AI"** button in the config creation page
 
 ### API Usage
 
