@@ -119,10 +119,16 @@ class Settings(BaseSettings):
         validation_alias="PILGRIM_OLLAMA_TOKEN",
     )
     ai_max_html_chars: int = Field(
-        default=30000,
+        default=40000,
         ge=1000,
         le=500000,
         validation_alias="PILGRIM_AI_MAX_HTML_CHARS",
+    )
+    ai_max_verification_iterations: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        validation_alias="PILGRIM_AI_MAX_VERIFICATION_ITERATIONS",
     )
 
     # ── Observability ────────────────────────────────────────────

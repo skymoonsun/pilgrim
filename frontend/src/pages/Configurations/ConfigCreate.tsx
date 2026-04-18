@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { configsApi, aiApi } from '../../api/client';
+import type { SpecVerificationResponse } from '../../api/client';
 import { IconPlus, IconSparkle } from '../../components/icons/Icons';
 
 const PROFILES = ['fetcher', 'http_session', 'stealth', 'dynamic', 'spider'];
@@ -33,6 +34,12 @@ export default function ConfigCreate() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
 
+  // Verification state
+  const [verifyUrl, setVerifyUrl] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<SpecVerificationResponse | null>(null);
+  const [verifyError, setVerifyError] = useState('');
+
   useEffect(() => {
     aiApi.status().then((res) => {
       setAiAvailable(res.enabled && res.reachable);
@@ -64,11 +71,55 @@ export default function ConfigCreate() {
         ...prev,
         extraction_spec: JSON.stringify(res.extraction_spec, null, 2),
       }));
+      // Pre-fill verification URL from AI generation URL
+      if (aiUrl) setVerifyUrl(aiUrl);
       setAiError('');
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'AI generation failed');
     }
     setAiLoading(false);
+  }
+
+  async function handleVerify() {
+    setVerifyError('');
+    setVerifyLoading(true);
+    setVerifyResult(null);
+
+    try {
+      let extraction_spec: Record<string, unknown> = {};
+      try {
+        extraction_spec = JSON.parse(form.extraction_spec || '{}');
+      } catch {
+        setVerifyError('Invalid JSON in Extraction Spec');
+        setVerifyLoading(false);
+        return;
+      }
+
+      if (!verifyUrl.trim()) {
+        setVerifyError('Enter a target URL to verify against');
+        setVerifyLoading(false);
+        return;
+      }
+
+      const res = await aiApi.verifySpec({
+        url: verifyUrl,
+        extraction_spec,
+        scraper_profile: form.scraper_profile,
+        max_iterations: 2,
+      });
+      setVerifyResult(res);
+
+      // If a refined spec was produced, update the form
+      if (res.refined_spec) {
+        setForm((prev) => ({
+          ...prev,
+          extraction_spec: JSON.stringify(res.refined_spec, null, 2),
+        }));
+      }
+    } catch (err) {
+      setVerifyError(err instanceof Error ? err.message : 'Verification failed');
+    }
+    setVerifyLoading(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -375,6 +426,210 @@ export default function ConfigCreate() {
                 }}
                 required
               />
+
+              {/* Verify Spec section */}
+              {form.extraction_spec.trim() && form.extraction_spec.trim() !== '{\n  "fields": {\n    "title": { "selector": "h1::text", "type": "css" }\n  }\n}' && (
+                <div style={{ marginTop: 16, borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Verify Spec</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— test selectors against a real page</span>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Target URL</label>
+                    <input
+                      type="url"
+                      className="form-input"
+                      placeholder="https://example.com/product/123"
+                      value={verifyUrl}
+                      onChange={(e) => setVerifyUrl(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={handleVerify}
+                    disabled={verifyLoading || !verifyUrl.trim()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.8rem',
+                      width: '100%',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {verifyLoading ? (
+                      <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Verifying...</>
+                    ) : (
+                      'Verify Spec'
+                    )}
+                  </button>
+
+                  {verifyError && (
+                    <div style={{
+                      marginTop: 10,
+                      color: 'var(--status-failed)',
+                      fontSize: '0.8rem',
+                    }}>
+                      {verifyError}
+                    </div>
+                  )}
+
+                  {verifyResult && (
+                    <div style={{
+                      marginTop: 12,
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 16,
+                      border: `1px solid ${verifyResult.valid ? 'rgba(76,175,80,0.3)' : 'rgba(255,82,82,0.3)'}`,
+                    }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 10 }}>
+                        {verifyResult.valid ? (
+                          <span style={{ color: 'var(--status-success)' }}>All fields matched with clean values</span>
+                        ) : (
+                          <span style={{ color: 'var(--status-failed)' }}>
+                            {verifyResult.passed_fields}/{verifyResult.total_fields} fields passed
+                          </span>
+                        )}
+                      </div>
+
+                      {verifyResult.page_warning && (
+                        <div style={{
+                          marginBottom: 10,
+                          padding: '8px 12px',
+                          background: 'rgba(255, 152, 0, 0.1)',
+                          border: '1px solid rgba(255, 152, 0, 0.3)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.75rem',
+                          color: '#ff9800',
+                        }}>
+                          {verifyResult.page_warning}
+                        </div>
+                      )}
+
+                      {verifyResult.field_results.map((fr) => (
+                        <div key={fr.field_name} style={{
+                          padding: '8px 0',
+                          fontSize: '0.8rem',
+                          borderBottom: '1px solid var(--border-color)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{
+                              color: fr.matched && fr.value_quality === 'good' ? 'var(--status-success)'
+                                : fr.matched ? '#ff9800' : 'var(--status-failed)',
+                              fontSize: '1rem',
+                              width: 16,
+                              textAlign: 'center',
+                            }}>
+                              {fr.value_quality === 'good' ? '\u2713' : fr.value_quality === 'html' ? '\u26A0' : '\u2717'}
+                            </span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500, minWidth: 100 }}>
+                              {fr.field_name}
+                            </span>
+                            <code style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', flex: 1 }}>
+                              {fr.selector}
+                            </code>
+                            {fr.value_quality === 'html' && (
+                              <span style={{
+                                fontSize: '0.7rem',
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                background: 'rgba(255, 152, 0, 0.15)',
+                                color: '#ff9800',
+                                border: '1px solid rgba(255, 152, 0, 0.3)',
+                              }}>
+                                HTML
+                              </span>
+                            )}
+                            {fr.value_quality === 'empty' && (
+                              <span style={{
+                                fontSize: '0.7rem',
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                background: 'rgba(255,82,82,0.1)',
+                                color: 'var(--status-failed)',
+                                border: '1px solid rgba(255,82,82,0.3)',
+                              }}>
+                                EMPTY
+                              </span>
+                            )}
+                          </div>
+                          {fr.matched && fr.sample_value && (
+                            <div style={{
+                              marginLeft: 24,
+                              marginTop: 4,
+                              padding: '6px 10px',
+                              background: fr.value_quality === 'html'
+                                ? 'rgba(255, 152, 0, 0.05)'
+                                : fr.value_quality === 'good'
+                                  ? 'rgba(76, 175, 80, 0.05)'
+                                  : 'transparent',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: '0.75rem',
+                              fontFamily: 'var(--font-mono)',
+                              color: fr.value_quality === 'html' ? '#ff9800' : 'var(--text-muted)',
+                              wordBreak: 'break-all',
+                              maxHeight: 80,
+                              overflow: 'auto',
+                            }}>
+                              {fr.sample_value}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Extracted data summary */}
+                      {verifyResult.extracted_data && Object.keys(verifyResult.extracted_data).length > 0 && (
+                        <details style={{ marginTop: 12 }}>
+                          <summary style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            marginBottom: 8,
+                          }}>
+                            Extracted data
+                          </summary>
+                          <pre style={{
+                            background: 'var(--bg-primary)',
+                            padding: 12,
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.7rem',
+                            fontFamily: 'var(--font-mono)',
+                            overflow: 'auto',
+                            maxHeight: 200,
+                            color: 'var(--text-secondary)',
+                          }}>
+                            {JSON.stringify(verifyResult.extracted_data, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+
+                      {verifyResult.refined_spec && (
+                        <div style={{ marginTop: 10, fontSize: '0.75rem', color: 'var(--status-success)' }}>
+                          Spec auto-refined ({verifyResult.iterations_performed} iteration{verifyResult.iterations_performed !== 1 ? 's' : ''})
+                          {verifyResult.model_used && ` using ${verifyResult.model_used}`}
+                        </div>
+                      )}
+
+                      {!verifyResult.valid && !verifyResult.refined_spec && verifyResult.iterations_performed === 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={handleVerify}
+                            disabled={verifyLoading}
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            Retry with AI refinement
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="card" style={{ padding: 28 }}>

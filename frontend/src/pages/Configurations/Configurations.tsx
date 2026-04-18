@@ -28,11 +28,14 @@ export default function Configurations() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete config "${name}"?`)) return;
     try {
+      console.log('Deleting config:', id);
       await configsApi.delete(id);
+      console.log('Delete succeeded');
       setConfigs((prev) => prev.filter((c) => c.id !== id));
       setTotal((prev) => prev - 1);
     } catch (err) {
       console.error('Delete failed:', err);
+      alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -117,9 +120,14 @@ export default function Configurations() {
                         <IconFlask size={16} />
                       </Link>
                       <button
-                        className="action-btn"
+                        type="button"
+                        className="action-btn action-btn--delete"
                         title="Delete"
-                        onClick={() => handleDelete(config.id, config.name)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleDelete(config.id, config.name);
+                        }}
                       >
                         <IconTrash size={16} />
                       </button>

@@ -85,7 +85,7 @@ class OllamaProvider(LLMProvider):
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             headers=headers,
-            timeout=300.0,  # LLM inference on large prompts can be slow
+            timeout=600.0,  # LLM inference on large prompts can be slow
         )
 
     async def generate(

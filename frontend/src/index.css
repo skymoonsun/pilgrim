@@ -625,11 +625,20 @@ tr:hover td {
   color: var(--text-muted);
   font-size: 0.85rem;
   transition: all var(--transition-fast);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
 }
 
 .action-btn:hover {
   color: var(--accent-primary);
   background: var(--accent-primary-dim);
+}
+
+.action-btn--delete:hover {
+  color: var(--error, #ff4444);
+  background: rgba(255, 68, 68, 0.1);
 }
 
 /* ── Page titles ─────────────────────────────────────────── */

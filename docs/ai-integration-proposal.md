@@ -70,7 +70,7 @@ Kullanıcı: Önizleme + düzenleme → Config olarak kaydet
 
 **Frontend UX:**
 
-ConfigCreate sayfasında "AI ile Oluştur" butonu → URL ve açıklama gir → AI çalışır (spinner) → extraction_spec alanı otomatik doldurulur → kullanıcı düzenleyebilir.
+ConfigCreate sayfasında "Generate with AI" butonu → URL ve açıklama gir → AI çalışır (spinner) → extraction_spec alanı otomatik doldurulur → kullanıcı düzenleyebilir.
 
 **Örnek Ollama prompt yapısı:**
 
@@ -425,13 +425,13 @@ Mevcut ConfigCreate sayfasına AI desteği eklenmesi:
 ┌─────────────────────────────────────────────────┐
 │  New Configuration                               │
 │                                                  │
-│  ┌─ AI ile Oluştur ──────────────────────────┐  │
+│  ┌─ Generate with AI ──────────────────────────┐  │
 │  │  Target URL: [________________________]    │  │
 │  │  Açıklama:   [________________________]    │  │
 │  │              [Bu sayfadan ürün adı, fiyat  │  │
 │  │               ve resimleri çek]             │  │
 │  │                                            │  │
-│  │  [✨ AI ile Oluştur]    [Manuel Mod]       │  │
+│  │  [✨ Generate with AI]    [Manuel Mod]       │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
 │  ┌─ Extraction Spec ─────────────────────────┐  │

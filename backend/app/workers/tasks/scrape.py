@@ -85,7 +85,30 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                 http_status = getattr(response, "status", None)
 
                 # 5. Extract
-                data = extract_data(response, config.extraction_spec)
+                # If extraction spec uses json_path, provide structured data
+                next_data = None
+                json_ld = None
+                fields = config.extraction_spec.get("fields", {}) if config.extraction_spec else {}
+                if any(
+                    f.get("type") == "json_path" for f in fields.values() if isinstance(f, dict)
+                ):
+                    from app.crawlers.html_sanitizer import sanitize_html
+
+                    html_raw = (
+                        getattr(response, "html", "")
+                        or getattr(response, "html_content", "")
+                        or getattr(response, "body", "")
+                        or str(response)
+                    )
+                    if html_raw.strip():
+                        sanitize_result = sanitize_html(html_raw)
+                        next_data = sanitize_result.next_data
+                        json_ld = sanitize_result.json_ld
+
+                data = extract_data(
+                    response, config.extraction_spec,
+                    next_data=next_data, json_ld=json_ld,
+                )
 
                 # 6. Persist result
                 result = CrawlJobResult(

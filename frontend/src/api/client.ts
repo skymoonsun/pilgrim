@@ -240,6 +240,37 @@ export interface AIStatusResponse {
   reachable: boolean;
 }
 
+export interface VerifySpecRequest {
+  url: string;
+  extraction_spec: Record<string, unknown>;
+  scraper_profile?: string;
+  fetch_options?: Record<string, unknown> | null;
+  max_iterations?: number;
+}
+
+export interface FieldVerificationResult {
+  field_name: string;
+  matched: boolean;
+  match_count: number;
+  sample_value: string | null;
+  selector: string;
+  selector_type: 'css' | 'xpath';
+  value_quality: 'good' | 'html' | 'empty' | 'none';
+}
+
+export interface SpecVerificationResponse {
+  valid: boolean;
+  total_fields: number;
+  passed_fields: number;
+  failed_fields: string[];
+  field_results: FieldVerificationResult[];
+  extracted_data: Record<string, unknown>;
+  refined_spec: Record<string, unknown> | null;
+  iterations_performed: number;
+  model_used: string | null;
+  page_warning: string | null;
+}
+
 // ── Generic fetch helper ─────────────────────────────────
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -397,6 +428,12 @@ export const aiApi = {
 
   generateSpec: (data: ExtractionSpecAIRequest) =>
     request<ExtractionSpecAIResponse>('/ai/generate-spec', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  verifySpec: (data: VerifySpecRequest) =>
+    request<SpecVerificationResponse>('/ai/verify-spec', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

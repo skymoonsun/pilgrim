@@ -126,3 +126,13 @@ class AIEmptySpecError(AppException):
             "LLM returned an empty extraction spec",
             "AI_EMPTY_SPEC",
         )
+
+
+class AIVerificationError(AppException):
+    """Raised when spec verification fails due to a non-recoverable error."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            f"Spec verification failed: {reason}",
+            "AI_VERIFICATION_ERROR",
+        )
