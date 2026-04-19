@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { proxyApi, proxySourceApi } from '../../api/client';
 import type { ValidProxy, ProxySourceConfig, ManualProxyCreateResult } from '../../api/client';
@@ -10,6 +10,10 @@ export default function Proxies() {
   const [protocolFilter, setProtocolFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [sources, setSources] = useState<ProxySourceConfig[]>([]);
+
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // Add modal state
   const [showAdd, setShowAdd] = useState(false);
@@ -45,19 +49,98 @@ export default function Proxies() {
     deps: [healthFilter, protocolFilter, sourceFilter],
   });
 
+  // Clear selection when filters change or list reloads
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [healthFilter, protocolFilter, sourceFilter]);
+
   // Load sources for filter dropdown
   useEffect(() => {
     proxySourceApi.list(0, 200).then((res) => setSources(res.items)).catch(() => {});
   }, []);
 
+  const allVisibleSelected = proxies.length > 0 && proxies.every((p) => selectedIds.has(p.id));
+
+  function toggleProxy(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(proxies.map((p) => p.id)));
+    }
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Delete this proxy?')) return;
     try {
       await proxyApi.delete(id);
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       reset();
     } catch (err) {
       alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected proxy${selectedIds.size !== 1 ? 'ies' : 'y'}?`)) return;
+    setDeleting(true);
+    try {
+      const res = await proxyApi.bulkDelete(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      reset();
+      alert(`Deleted ${res.deleted} proxies`);
+    } catch (err) {
+      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+    }
+    setDeleting(false);
+  }
+
+  async function handleDeleteAll() {
+    const filterDesc = getActiveFilterDescription();
+    const msg = filterDesc
+      ? `Delete ALL proxies matching: ${filterDesc}?`
+      : 'Delete ALL proxies? This cannot be undone.';
+    if (!confirm(msg)) return;
+    setDeleting(true);
+    try {
+      const res = await proxyApi.deleteAll({
+        source_id: sourceFilter && sourceFilter !== 'manual' ? sourceFilter : undefined,
+        manual_only: sourceFilter === 'manual' ? true : undefined,
+        protocol: protocolFilter || undefined,
+        health: healthFilter || undefined,
+      });
+      setSelectedIds(new Set());
+      reset();
+      alert(`Deleted ${res.deleted} proxies`);
+    } catch (err) {
+      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+    }
+    setDeleting(false);
+  }
+
+  function getActiveFilterDescription(): string {
+    const parts: string[] = [];
+    if (sourceFilter === 'manual') parts.push('Manual');
+    else if (sourceFilter) {
+      const src = sources.find((s) => s.id === sourceFilter);
+      parts.push(src ? src.name : sourceFilter);
+    }
+    if (protocolFilter) parts.push(protocolFilter.toUpperCase());
+    if (healthFilter) parts.push(healthFilter);
+    return parts.join(', ');
   }
 
   function resetAddForm() {
@@ -170,10 +253,50 @@ export default function Proxies() {
         </div>
       </div>
 
+      {/* Selection action bar */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '10px 20px',
+          marginBottom: 16,
+          background: 'rgba(0,240,255,0.06)',
+          border: '1px solid rgba(0,240,255,0.2)',
+          borderRadius: 'var(--radius-md)',
+        }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', fontWeight: 600 }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            className="btn btn-secondary"
+            onClick={handleBulkDelete}
+            disabled={deleting}
+            style={{ borderColor: 'var(--status-failed)', color: 'var(--status-failed)' }}
+          >
+            <IconTrash size={14} /> Delete Selected
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={clearSelection}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="card table-card">
         <table>
           <thead>
             <tr>
+              <th style={{ width: 40 }}>
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  style={{ accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                />
+              </th>
               <th>IP</th>
               <th>Port</th>
               <th>Protocol</th>
@@ -188,7 +311,7 @@ export default function Proxies() {
           <tbody>
             {proxies.length === 0 ? (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <div className="empty-state">
                     <div className="empty-state-icon"><IconShield size={48} /></div>
                     <div className="empty-state-text">No proxies found</div>
@@ -201,7 +324,17 @@ export default function Proxies() {
             ) : (
               <>
                 {proxies.map((proxy) => (
-                  <tr key={proxy.id}>
+                  <tr key={proxy.id} style={{
+                    background: selectedIds.has(proxy.id) ? 'rgba(0,240,255,0.06)' : undefined,
+                  }}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(proxy.id)}
+                        onChange={() => toggleProxy(proxy.id)}
+                        style={{ accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+                      />
+                    </td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
                     <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
                     <td><span className="badge badge--queued">{proxy.protocol}</span></td>
@@ -256,13 +389,23 @@ export default function Proxies() {
                 ))}
                 {/* Sentinel element for infinite scroll */}
                 <tr ref={sentinelRef as any}>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     {loadingMore && <div className="spinner" style={{ margin: '0 auto' }} />}
                     {!loadingMore && proxies.length < total && (
                       <span style={{ color: 'var(--text-muted)' }}>Scroll to load more...</span>
                     )}
                     {!loadingMore && proxies.length >= total && total > 0 && (
-                      <span style={{ color: 'var(--text-muted)' }}>All proxies loaded</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                        <span>All proxies loaded</span>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={handleDeleteAll}
+                          disabled={deleting}
+                          style={{ fontSize: '0.8rem', borderColor: 'var(--status-failed)', color: 'var(--status-failed)', padding: '4px 12px' }}
+                        >
+                          <IconTrash size={13} /> Delete All{getActiveFilterDescription() ? ` (${getActiveFilterDescription()})` : ''}
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

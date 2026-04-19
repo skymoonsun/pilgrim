@@ -198,3 +198,17 @@ class ManualProxyCreateResult(BaseModel):
     items: list[ValidProxyResponse] = Field(
         default_factory=list, description="Created proxy entries"
     )
+
+
+class BulkDeleteRequest(BaseModel):
+    """Payload for bulk-deleting proxies by ID list."""
+
+    proxy_ids: list[UUID] = Field(
+        ..., min_length=1, description="List of proxy UUIDs to delete"
+    )
+
+
+class BulkDeleteResponse(BaseModel):
+    """Result of a bulk or full delete operation."""
+
+    deleted: int = Field(..., description="Number of proxies deleted")

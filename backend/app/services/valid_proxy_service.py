@@ -253,6 +253,39 @@ class ValidProxyService:
         await self.session.commit()
         logger.info("Deleted valid proxy: %s", proxy_id)
 
+    async def delete_by_ids(self, proxy_ids: list[UUID]) -> int:
+        """Delete multiple proxies by their IDs. Returns count deleted."""
+        stmt = delete(ValidProxy).where(ValidProxy.id.in_(proxy_ids))
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        count = result.rowcount
+        logger.info("Bulk-deleted %d proxies", count)
+        return count
+
+    async def delete_all(
+        self,
+        *,
+        source_config_id: UUID | None = None,
+        manual_only: bool = False,
+        protocol: ProxyProtocol | None = None,
+        health: ProxyHealthStatus | None = None,
+    ) -> int:
+        """Delete all proxies matching optional filters. Returns count deleted."""
+        stmt = delete(ValidProxy)
+        if source_config_id is not None:
+            stmt = stmt.where(ValidProxy.source_config_id == source_config_id)
+        if manual_only:
+            stmt = stmt.where(ValidProxy.source_config_id.is_(None))
+        if protocol is not None:
+            stmt = stmt.where(ValidProxy.protocol == protocol)
+        if health is not None:
+            stmt = stmt.where(ValidProxy.health == health)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        count = result.rowcount
+        logger.info("Deleted %d proxies (filtered bulk delete)", count)
+        return count
+
     async def delete_expired(self) -> int:
         """Delete all proxies past their expires_at timestamp."""
         now = datetime.now(timezone.utc)

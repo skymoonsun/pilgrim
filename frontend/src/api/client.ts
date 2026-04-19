@@ -652,6 +652,21 @@ export const proxyApi = {
   delete: (id: string) =>
     request<void>('/proxies/' + id, { method: 'DELETE' }),
 
+  bulkDelete: (ids: string[]) =>
+    request<{ deleted: number }>('/proxies/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ proxy_ids: ids }),
+    }),
+
+  deleteAll: (params?: { source_id?: string; manual_only?: boolean; protocol?: string; health?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.source_id) sp.set('source_id', params.source_id);
+    if (params?.manual_only) sp.set('manual_only', 'true');
+    if (params?.protocol) sp.set('protocol', params.protocol);
+    if (params?.health) sp.set('health', params.health);
+    return request<{ deleted: number }>('/proxies/?' + sp.toString(), { method: 'DELETE' });
+  },
+
   triggerValidate: (sourceId: string) =>
     request<{ source_id: string; task_id: string; message: string }>('/proxies/' + sourceId + '/validate', {
       method: 'POST',

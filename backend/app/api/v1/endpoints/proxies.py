@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_async_session
 from app.models.enums import ProxyHealthStatus, ProxyProtocol
 from app.schemas.proxy import (
+    BulkDeleteRequest,
+    BulkDeleteResponse,
     ManualProxyBulkCreate,
     ManualProxyCreate,
     ManualProxyCreateResult,
@@ -100,6 +102,44 @@ async def get_valid_proxy(
     service = ValidProxyService(session)
     proxy = await service.get_by_id(proxy_id)
     return ValidProxyResponse.model_validate(proxy)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+async def bulk_delete_proxies(
+    body: BulkDeleteRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> BulkDeleteResponse:
+    """Delete multiple proxies by their IDs."""
+    service = ValidProxyService(session)
+    count = await service.delete_by_ids(body.proxy_ids)
+    return BulkDeleteResponse(deleted=count)
+
+
+@router.delete("/", response_model=BulkDeleteResponse)
+async def delete_all_proxies(
+    source_id: UUID | None = Query(
+        None, description="Only delete proxies from this source"
+    ),
+    manual_only: bool = Query(
+        False, description="Only delete manual (source-less) proxies"
+    ),
+    protocol: ProxyProtocol | None = Query(
+        None, description="Only delete proxies with this protocol"
+    ),
+    health: ProxyHealthStatus | None = Query(
+        None, description="Only delete proxies with this health status"
+    ),
+    session: AsyncSession = Depends(get_async_session),
+) -> BulkDeleteResponse:
+    """Delete all proxies, optionally filtered. Use with caution."""
+    service = ValidProxyService(session)
+    count = await service.delete_all(
+        source_config_id=source_id,
+        manual_only=manual_only,
+        protocol=protocol,
+        health=health,
+    )
+    return BulkDeleteResponse(deleted=count)
 
 
 @router.delete(
