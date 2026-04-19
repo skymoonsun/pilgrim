@@ -18,10 +18,10 @@ class ValidProxy(Base, UUIDMixin, TimestampMixin):
         UniqueConstraint("ip", "port", "protocol", name="uq_proxy_ip_port_protocol"),
     )
 
-    source_config_id: Mapped[str] = mapped_column(
+    source_config_id: Mapped[str | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("proxy_source_configs.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -61,8 +61,8 @@ class ValidProxy(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Relationships ──────────────────────────────────────────
-    source_config: Mapped["ProxySourceConfig"] = relationship(
-        "ProxySourceConfig", back_populates="valid_proxies"
+    source_config: Mapped["ProxySourceConfig | None"] = relationship(
+        "ProxySourceConfig", back_populates="valid_proxies", foreign_keys=[source_config_id]
     )
 
     def __repr__(self) -> str:

@@ -561,7 +561,8 @@ export const proxySourceApi = {
 
 export interface ValidProxy {
   id: string;
-  source_config_id: string;
+  source_config_id: string | null;
+  source_name?: string | null;
   ip: string;
   port: number;
   protocol: string;
@@ -583,10 +584,30 @@ export interface ValidProxyListResponse {
   total: number;
 }
 
+export interface ManualProxyCreate {
+  ip: string;
+  port: number;
+  protocol?: string;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface ManualProxyBulkCreate {
+  raw_text: string;
+  default_protocol?: string;
+}
+
+export interface ManualProxyCreateResult {
+  created: number;
+  skipped: number;
+  items: ValidProxy[];
+}
+
 export const proxyApi = {
-  list: (params?: { source_id?: string; protocol?: string; health?: string; skip?: number; limit?: number }) => {
+  list: (params?: { source_id?: string; manual_only?: boolean; protocol?: string; health?: string; skip?: number; limit?: number }) => {
     const sp = new URLSearchParams();
     if (params?.source_id) sp.set('source_id', params.source_id);
+    if (params?.manual_only) sp.set('manual_only', 'true');
     if (params?.protocol) sp.set('protocol', params.protocol);
     if (params?.health) sp.set('health', params.health);
     sp.set('skip', String(params?.skip ?? 0));
@@ -595,6 +616,18 @@ export const proxyApi = {
   },
 
   get: (id: string) => request<ValidProxy>('/proxies/' + id),
+
+  create: (data: ManualProxyCreate) =>
+    request<ManualProxyCreateResult>('/proxies/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  createBulk: (data: ManualProxyBulkCreate) =>
+    request<ManualProxyCreateResult>('/proxies/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   delete: (id: string) =>
     request<void>('/proxies/' + id, { method: 'DELETE' }),

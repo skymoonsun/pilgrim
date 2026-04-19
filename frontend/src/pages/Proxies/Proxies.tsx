@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { proxyApi } from '../../api/client';
-import type { ValidProxy } from '../../api/client';
-import { IconShield, IconTrash } from '../../components/icons/Icons';
+import { createPortal } from 'react-dom';
+import { proxyApi, proxySourceApi } from '../../api/client';
+import type { ValidProxy, ProxySourceConfig, ManualProxyCreateResult } from '../../api/client';
+import { IconShield, IconTrash, IconPlus } from '../../components/icons/Icons';
 
 export default function Proxies() {
   const [proxies, setProxies] = useState<ValidProxy[]>([]);
@@ -9,19 +10,57 @@ export default function Proxies() {
   const [loading, setLoading] = useState(true);
   const [healthFilter, setHealthFilter] = useState('');
   const [protocolFilter, setProtocolFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [sources, setSources] = useState<ProxySourceConfig[]>([]);
+
+  // Add modal state
+  const [showAdd, setShowAdd] = useState(false);
+  const [addMode, setAddMode] = useState<'single' | 'bulk'>('single');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addResult, setAddResult] = useState<ManualProxyCreateResult | null>(null);
+
+  // Single form
+  const [singleForm, setSingleForm] = useState({
+    ip: '',
+    port: '',
+    protocol: 'http',
+    username: '',
+    password: '',
+  });
+
+  // Bulk form
+  const [bulkText, setBulkText] = useState('');
+  const [bulkProtocol, setBulkProtocol] = useState('http');
 
   useEffect(() => {
     loadProxies();
-  }, [healthFilter, protocolFilter]);
+    loadSources();
+  }, [healthFilter, protocolFilter, sourceFilter]);
+
+  async function loadSources() {
+    try {
+      const res = await proxySourceApi.list(0, 200);
+      setSources(res.items);
+    } catch (err) {
+      console.error('Failed to load sources:', err);
+    }
+  }
 
   async function loadProxies() {
-    setLoading(true);
+    if (proxies.length === 0) setLoading(true);
     try {
-      const res = await proxyApi.list({
+      const params: Record<string, unknown> = {
         health: healthFilter || undefined,
         protocol: protocolFilter || undefined,
         limit: 200,
-      });
+      };
+      if (sourceFilter === 'manual') {
+        params.manual_only = true;
+      } else if (sourceFilter) {
+        params.source_id = sourceFilter;
+      }
+      const res = await proxyApi.list(params as any);
       setProxies(res.items);
       setTotal(res.total);
     } catch (err) {
@@ -41,12 +80,57 @@ export default function Proxies() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="loading-overlay">
-        <div className="spinner" />
-      </div>
-    );
+  function resetAddForm() {
+    setSingleForm({ ip: '', port: '', protocol: 'http', username: '', password: '' });
+    setBulkText('');
+    setBulkProtocol('http');
+    setAddError(null);
+    setAddResult(null);
+    setAddMode('single');
+  }
+
+  function openAddModal() {
+    resetAddForm();
+    setShowAdd(true);
+  }
+
+  async function handleAddSingle(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+    setAddResult(null);
+    setAdding(true);
+    try {
+      const result = await proxyApi.create({
+        ip: singleForm.ip,
+        port: parseInt(singleForm.port, 10),
+        protocol: singleForm.protocol,
+        username: singleForm.username || null,
+        password: singleForm.password || null,
+      });
+      setAddResult(result);
+      await loadProxies();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : 'Failed to add proxy');
+    }
+    setAdding(false);
+  }
+
+  async function handleAddBulk(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+    setAddResult(null);
+    setAdding(true);
+    try {
+      const result = await proxyApi.createBulk({
+        raw_text: bulkText,
+        default_protocol: bulkProtocol,
+      });
+      setAddResult(result);
+      await loadProxies();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : 'Failed to add proxies');
+    }
+    setAdding(false);
   }
 
   return (
@@ -57,6 +141,18 @@ export default function Proxies() {
           <p className="page-subtitle">{total} prox{total !== 1 ? 'ies' : 'y'} total</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
+          <select
+            className="form-input form-select"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            style={{ width: 160 }}
+          >
+            <option value="">All sources</option>
+            <option value="manual">Manual</option>
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
           <select
             className="form-input form-select"
             value={healthFilter}
@@ -80,16 +176,23 @@ export default function Proxies() {
             <option value="socks4">SOCKS4</option>
             <option value="socks5">SOCKS5</option>
           </select>
+          <button className="btn btn-primary" onClick={openAddModal}>
+            <IconPlus size={16} /> Add Proxy
+          </button>
         </div>
       </div>
 
       <div className="card table-card">
+        {loading && proxies.length === 0 && (
+          <div className="loading-overlay"><div className="spinner" /></div>
+        )}
         <table>
           <thead>
             <tr>
               <th>IP</th>
               <th>Port</th>
               <th>Protocol</th>
+              <th>Source</th>
               <th>Health</th>
               <th>Avg Response</th>
               <th>Success / Fail</th>
@@ -100,12 +203,12 @@ export default function Proxies() {
           <tbody>
             {proxies.length === 0 ? (
               <tr>
-                <td colSpan={8}>
+                <td colSpan={9}>
                   <div className="empty-state">
                     <div className="empty-state-icon"><IconShield size={48} /></div>
                     <div className="empty-state-text">No proxies found</div>
                     <div className="empty-state-sub">
-                      Add a proxy source and fetch proxies to see them here
+                      Add a proxy source and fetch proxies, or add manual proxies
                     </div>
                   </div>
                 </td>
@@ -116,6 +219,24 @@ export default function Proxies() {
                   <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
                   <td><span className="badge badge--queued">{proxy.protocol}</span></td>
+                  <td>
+                    {proxy.source_config_id ? (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        {proxy.source_name || 'Source'}
+                      </span>
+                    ) : (
+                      <span className="badge" style={{
+                        background: 'rgba(0,240,255,0.1)',
+                        color: 'var(--accent-cyan)',
+                        border: '1px solid rgba(0,240,255,0.3)',
+                        fontSize: '0.7rem',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                      }}>
+                        Manual
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <span className={`badge badge--${
                       proxy.health === 'healthy' ? 'success' :
@@ -151,6 +272,189 @@ export default function Proxies() {
           </tbody>
         </table>
       </div>
+
+      {/* Add Proxy Modal */}
+      {showAdd && createPortal(
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}>
+          <div style={{
+            width: 520,
+            maxHeight: '90vh',
+            overflow: 'auto',
+            background: '#1e2836',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px 24px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Add Proxy</h2>
+              <button type="button" className="action-btn" onClick={() => setShowAdd(false)} style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>✕</button>
+            </div>
+
+            {/* Mode toggle */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              <button
+                type="button"
+                className={`btn ${addMode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => { setAddMode('single'); setAddResult(null); setAddError(null); }}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                Single
+              </button>
+              <button
+                type="button"
+                className={`btn ${addMode === 'bulk' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => { setAddMode('bulk'); setAddResult(null); setAddError(null); }}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                Bulk Add
+              </button>
+            </div>
+
+            {addError && (
+              <div style={{
+                background: 'var(--status-failed-bg)',
+                border: '1px solid rgba(255,82,82,0.3)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                color: 'var(--status-failed)',
+                fontSize: '0.85rem',
+                marginBottom: 16,
+              }}>
+                {addError}
+              </div>
+            )}
+
+            {addResult && (
+              <div style={{
+                background: 'rgba(76,175,80,0.1)',
+                border: '1px solid rgba(76,175,80,0.3)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                color: 'var(--status-success)',
+                fontSize: '0.85rem',
+                marginBottom: 16,
+              }}>
+                Created {addResult.created} proxy{addResult.created !== 1 ? 'ies' : 'y'}
+                {addResult.skipped > 0 && `, ${addResult.skipped} already existed (updated)`}
+              </div>
+            )}
+
+            {addMode === 'single' ? (
+              <form onSubmit={handleAddSingle}>
+                <div className="form-group">
+                  <label className="form-label">IP Address *</label>
+                  <input
+                    className="form-input"
+                    value={singleForm.ip}
+                    onChange={(e) => setSingleForm({ ...singleForm, ip: e.target.value })}
+                    placeholder="1.2.3.4"
+                    required
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Port *</label>
+                    <input
+                      className="form-input"
+                      type="number"
+                      value={singleForm.port}
+                      onChange={(e) => setSingleForm({ ...singleForm, port: e.target.value })}
+                      placeholder="8080"
+                      min={1}
+                      max={65535}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Protocol</label>
+                    <select
+                      className="form-input form-select"
+                      value={singleForm.protocol}
+                      onChange={(e) => setSingleForm({ ...singleForm, protocol: e.target.value })}
+                    >
+                      <option value="http">HTTP</option>
+                      <option value="https">HTTPS</option>
+                      <option value="socks4">SOCKS4</option>
+                      <option value="socks5">SOCKS5</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Username</label>
+                    <input
+                      className="form-input"
+                      value={singleForm.username}
+                      onChange={(e) => setSingleForm({ ...singleForm, username: e.target.value })}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Password</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      value={singleForm.password}
+                      onChange={(e) => setSingleForm({ ...singleForm, password: e.target.value })}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                  <button type="submit" className="btn btn-primary" disabled={adding} style={{ flex: 1, justifyContent: 'center' }}>
+                    {adding ? 'Adding...' : 'Add Proxy'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleAddBulk}>
+                <div className="form-group">
+                  <label className="form-label">Proxy List *</label>
+                  <textarea
+                    className="form-input"
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder={'1.2.3.4:8080\nsocks5://user:pass@5.6.7.8:1080\nhttps://9.10.11.12:3128'}
+                    rows={8}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Default Protocol</label>
+                  <select
+                    className="form-input form-select"
+                    value={bulkProtocol}
+                    onChange={(e) => setBulkProtocol(e.target.value)}
+                  >
+                    <option value="http">HTTP</option>
+                    <option value="https">HTTPS</option>
+                    <option value="socks4">SOCKS4</option>
+                    <option value="socks5">SOCKS5</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                  <button type="submit" className="btn btn-primary" disabled={adding} style={{ flex: 1, justifyContent: 'center' }}>
+                    {adding ? 'Adding...' : 'Add Proxies'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

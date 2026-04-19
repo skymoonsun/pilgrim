@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ProxyNotFoundError
 from app.models.enums import ProxyHealthStatus, ProxyProtocol
@@ -36,11 +37,14 @@ class ValidProxyService:
         source_config_id: UUID | None = None,
         protocol: ProxyProtocol | None = None,
         health: ProxyHealthStatus | None = None,
+        manual_only: bool = False,
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[ValidProxy], int]:
         """Return paginated valid proxies and total count."""
-        query = select(ValidProxy)
+        query = select(ValidProxy).options(
+            selectinload(ValidProxy.source_config)
+        )
         count_query = select(func.count()).select_from(ValidProxy)
 
         if source_config_id is not None:
@@ -48,6 +52,9 @@ class ValidProxyService:
             count_query = count_query.where(
                 ValidProxy.source_config_id == source_config_id
             )
+        if manual_only:
+            query = query.where(ValidProxy.source_config_id.is_(None))
+            count_query = count_query.where(ValidProxy.source_config_id.is_(None))
         if protocol is not None:
             query = query.where(ValidProxy.protocol == protocol)
             count_query = count_query.where(ValidProxy.protocol == protocol)
@@ -125,6 +132,119 @@ class ValidProxyService:
         await self.session.commit()
         await self.session.refresh(proxy)
         return proxy
+
+    async def create_manual_proxy(
+        self,
+        *,
+        ip: str,
+        port: int,
+        protocol: ProxyProtocol,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> ValidProxy:
+        """Create a single manual proxy (no source, no expiry).
+
+        If the proxy already exists (by ip+port+protocol), it is
+        converted to manual (source_config_id set to None, expires_at cleared).
+        """
+        result = await self.session.execute(
+            select(ValidProxy).where(
+                ValidProxy.ip == ip,
+                ValidProxy.port == port,
+                ValidProxy.protocol == protocol,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.source_config_id = None
+            existing.expires_at = None
+            existing.username = username
+            existing.password = password
+            await self.session.commit()
+            await self.session.refresh(existing)
+            return existing
+
+        proxy = ValidProxy(
+            source_config_id=None,
+            ip=ip,
+            port=port,
+            protocol=protocol,
+            username=username,
+            password=password,
+            health=ProxyHealthStatus.HEALTHY,
+            success_count=0,
+            failure_count=0,
+            last_checked_at=None,
+            last_success_at=None,
+            expires_at=None,
+        )
+        self.session.add(proxy)
+        await self.session.commit()
+        await self.session.refresh(proxy)
+        return proxy
+
+    async def create_manual_proxies_bulk(
+        self,
+        raw_text: str,
+        default_protocol: ProxyProtocol = ProxyProtocol.HTTP,
+    ) -> tuple[list[ValidProxy], int, int]:
+        """Bulk-create manual proxies from raw text lines.
+
+        Returns (proxies, created_count, skipped_count).
+        """
+        from app.services.proxy_parser import parse_raw_text
+
+        parsed = parse_raw_text(raw_text)
+        proxies: list[ValidProxy] = []
+        skipped = 0
+
+        for entry in parsed:
+            protocol = entry.protocol
+            # Apply default protocol for entries parsed as HTTP without
+            # an explicit protocol prefix in the text.
+            if protocol == ProxyProtocol.HTTP and default_protocol != ProxyProtocol.HTTP:
+                protocol = default_protocol
+
+            result = await self.session.execute(
+                select(ValidProxy).where(
+                    ValidProxy.ip == entry.ip,
+                    ValidProxy.port == entry.port,
+                    ValidProxy.protocol == protocol,
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                existing.source_config_id = None
+                existing.expires_at = None
+                if entry.username is not None:
+                    existing.username = entry.username
+                if entry.password is not None:
+                    existing.password = entry.password
+                skipped += 1
+                proxies.append(existing)
+                continue
+
+            proxy = ValidProxy(
+                source_config_id=None,
+                ip=entry.ip,
+                port=entry.port,
+                protocol=protocol,
+                username=entry.username,
+                password=entry.password,
+                health=ProxyHealthStatus.HEALTHY,
+                success_count=0,
+                failure_count=0,
+                last_checked_at=None,
+                last_success_at=None,
+                expires_at=None,
+            )
+            self.session.add(proxy)
+            proxies.append(proxy)
+
+        await self.session.commit()
+        for proxy in proxies:
+            await self.session.refresh(proxy)
+        return proxies, len(proxies) - skipped, skipped
 
     async def delete_by_id(self, proxy_id: UUID) -> None:
         """Delete a valid proxy by ID."""

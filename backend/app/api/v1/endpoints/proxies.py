@@ -7,16 +7,61 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_async_session
 from app.models.enums import ProxyHealthStatus, ProxyProtocol
-from app.schemas.proxy import ValidProxyListResponse, ValidProxyResponse
+from app.schemas.proxy import (
+    ManualProxyBulkCreate,
+    ManualProxyCreate,
+    ManualProxyCreateResult,
+    ValidProxyListResponse,
+    ValidProxyResponse,
+)
 from app.services.valid_proxy_service import ValidProxyService
 
 router = APIRouter()
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=ManualProxyCreateResult)
+async def create_manual_proxy(
+    body: ManualProxyCreate,
+    session: AsyncSession = Depends(get_async_session),
+) -> ManualProxyCreateResult:
+    """Add a single manual proxy."""
+    service = ValidProxyService(session)
+    proxy = await service.create_manual_proxy(
+        ip=body.ip,
+        port=body.port,
+        protocol=body.protocol,
+        username=body.username,
+        password=body.password,
+    )
+    resp = ValidProxyResponse.model_validate(proxy)
+    resp.source_name = None
+    return ManualProxyCreateResult(created=1, skipped=0, items=[resp])
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED, response_model=ManualProxyCreateResult)
+async def create_manual_proxies_bulk(
+    body: ManualProxyBulkCreate,
+    session: AsyncSession = Depends(get_async_session),
+) -> ManualProxyCreateResult:
+    """Bulk-add manual proxies from raw text lines."""
+    service = ValidProxyService(session)
+    proxies, created, skipped = await service.create_manual_proxies_bulk(
+        raw_text=body.raw_text,
+        default_protocol=body.default_protocol,
+    )
+    items = [ValidProxyResponse.model_validate(p) for p in proxies]
+    for item in items:
+        item.source_name = None
+    return ManualProxyCreateResult(created=created, skipped=skipped, items=items)
 
 
 @router.get("/", response_model=ValidProxyListResponse)
 async def list_valid_proxies(
     source_id: UUID | None = Query(
         None, description="Filter by proxy source config UUID"
+    ),
+    manual_only: bool = Query(
+        False, description="Show only manual (source-less) proxies"
     ),
     protocol: ProxyProtocol | None = Query(
         None, description="Filter by proxy protocol"
@@ -32,15 +77,18 @@ async def list_valid_proxies(
     service = ValidProxyService(session)
     proxies, total = await service.list_all(
         source_config_id=source_id,
+        manual_only=manual_only,
         protocol=protocol,
         health=health,
         skip=skip,
         limit=limit,
     )
-    return ValidProxyListResponse(
-        items=[ValidProxyResponse.model_validate(p) for p in proxies],
-        total=total,
-    )
+    items = []
+    for p in proxies:
+        resp = ValidProxyResponse.model_validate(p)
+        resp.source_name = p.source_config.name if p.source_config else None
+        items.append(resp)
+    return ValidProxyListResponse(items=items, total=total)
 
 
 @router.get("/{proxy_id}", response_model=ValidProxyResponse)

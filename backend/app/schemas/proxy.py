@@ -112,7 +112,8 @@ class ValidProxyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    source_config_id: UUID
+    source_config_id: UUID | None
+    source_name: str | None = None
     ip: str
     port: int
     protocol: ProxyProtocol
@@ -153,3 +154,42 @@ class ValidateTriggerResponse(BaseModel):
     source_id: UUID
     task_id: str
     message: str
+
+
+# ── Manual proxy creation ──────────────────────────────────────
+
+
+class ManualProxyCreate(BaseModel):
+    """Payload for adding a single manual proxy."""
+
+    ip: str = Field(..., min_length=1, max_length=45, description="Proxy IP address")
+    port: int = Field(..., ge=1, le=65535, description="Proxy port")
+    protocol: ProxyProtocol = Field(
+        default=ProxyProtocol.HTTP, description="Proxy protocol"
+    )
+    username: str | None = Field(None, max_length=255, description="Auth username")
+    password: str | None = Field(None, max_length=255, description="Auth password")
+
+
+class ManualProxyBulkCreate(BaseModel):
+    """Payload for bulk-adding manual proxies via raw text lines."""
+
+    raw_text: str = Field(
+        ...,
+        min_length=1,
+        description="One proxy per line: ip:port, protocol://ip:port, protocol://user:pass@ip:port",
+    )
+    default_protocol: ProxyProtocol = Field(
+        default=ProxyProtocol.HTTP,
+        description="Protocol for lines without explicit protocol prefix",
+    )
+
+
+class ManualProxyCreateResult(BaseModel):
+    """Result of manual proxy creation (single or bulk)."""
+
+    created: int = Field(..., description="Number of proxies newly created")
+    skipped: int = Field(..., description="Number of proxies already existing (upserted)")
+    items: list[ValidProxyResponse] = Field(
+        default_factory=list, description="Created proxy entries"
+    )
