@@ -27,7 +27,9 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 - **Config-driven scraping** — Define extraction rules (CSS/XPath selectors) once, reuse across multiple URLs
 - **AI-powered config generation** — Describe what to extract in natural language; AI generates the selectors for you
 - **Proxy management** — Fetch, parse, validate, and rotate proxies from configurable sources with health monitoring
+- **Manual proxy support** — Add paid/custom proxies individually or in bulk; they persist until deleted
 - **AI-powered proxy source analysis** — Paste a proxy list URL and let AI detect the format and suggest extraction settings
+- **Proxy source verification** — Test parsing config against a real URL before saving
 - **Scrapling-first** — Uses [Scrapling](https://github.com/D4Vinci/Scrapling) for fetching & parsing with multiple profiles (static, stealth, dynamic)
 - **Schedule management** — Cron & interval-based scheduling with config-to-URL mapping
 - **Webhook callbacks** — Post results to external services with field mapping and retry logic
