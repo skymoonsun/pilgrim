@@ -61,6 +61,7 @@ class ProxyProtocol(str, Enum):
 class ProxyHealthStatus(str, Enum):
     """Health status of a validated proxy."""
 
+    PENDING = "pending"
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"

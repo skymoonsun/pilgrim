@@ -89,3 +89,63 @@ class ProxySourceService:
         await self.session.delete(config)
         await self.session.commit()
         logger.info("Deleted proxy source config: %s", source_id)
+
+    async def list_fetch_logs(
+        self,
+        source_id: UUID,
+        *,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list, int]:
+        """Return paginated fetch logs for a source."""
+        from app.models.proxy_fetch_log import ProxyFetchLog
+
+        await self.get_by_id(source_id)
+        query = (
+            select(ProxyFetchLog)
+            .where(ProxyFetchLog.source_config_id == source_id)
+            .order_by(ProxyFetchLog.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        count_query = (
+            select(func.count())
+            .select_from(ProxyFetchLog)
+            .where(ProxyFetchLog.source_config_id == source_id)
+        )
+        result = await self.session.execute(query)
+        logs = list(result.scalars().all())
+        count_result = await self.session.execute(count_query)
+        total = count_result.scalar_one()
+        return logs, total
+
+    async def list_validation_logs(
+        self,
+        source_id: UUID,
+        *,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list, int]:
+        """Return paginated validation logs for a source, with URL checks."""
+        from sqlalchemy.orm import selectinload
+        from app.models.proxy_validation_log import ProxyValidationLog
+
+        await self.get_by_id(source_id)
+        query = (
+            select(ProxyValidationLog)
+            .options(selectinload(ProxyValidationLog.url_checks))
+            .where(ProxyValidationLog.source_config_id == source_id)
+            .order_by(ProxyValidationLog.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        count_query = (
+            select(func.count())
+            .select_from(ProxyValidationLog)
+            .where(ProxyValidationLog.source_config_id == source_id)
+        )
+        result = await self.session.execute(query)
+        logs = list(result.scalars().unique())
+        count_result = await self.session.execute(count_query)
+        total = count_result.scalar_one()
+        return logs, total

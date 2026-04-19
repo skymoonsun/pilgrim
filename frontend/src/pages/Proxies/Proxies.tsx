@@ -231,6 +231,7 @@ export default function Proxies() {
             style={{ width: 140 }}
           >
             <option value="">All health</option>
+            <option value="pending">Pending</option>
             <option value="healthy">Healthy</option>
             <option value="degraded">Degraded</option>
             <option value="unhealthy">Unhealthy</option>
@@ -359,7 +360,8 @@ export default function Proxies() {
                     <td>
                       <span className={`badge badge--${
                         proxy.health === 'healthy' ? 'success' :
-                        proxy.health === 'degraded' ? 'running' : 'failed'
+                        proxy.health === 'degraded' ? 'running' :
+                        proxy.health === 'pending' ? 'queued' : 'failed'
                       }`}>
                         {proxy.health}
                       </span>

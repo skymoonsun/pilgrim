@@ -212,3 +212,78 @@ class BulkDeleteResponse(BaseModel):
     """Result of a bulk or full delete operation."""
 
     deleted: int = Field(..., description="Number of proxies deleted")
+
+
+# ── Proxy Fetch Log ──────────────────────────────────────────────
+
+
+class ProxyFetchLogResponse(BaseModel):
+    """Single fetch log response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    source_config_id: UUID
+    status: str
+    proxies_found: int
+    proxies_new: int
+    proxies_updated: int
+    proxies_truncated: int
+    content_length: int
+    duration_ms: float
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProxyFetchLogListResponse(BaseModel):
+    """Paginated list of fetch logs."""
+
+    items: list[ProxyFetchLogResponse]
+    total: int
+
+
+# ── Proxy Validation Log ────────────────────────────────────────
+
+
+class ProxyUrlCheckLogResponse(BaseModel):
+    """Per-URL validation metrics (performance matrix row)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    validation_log_id: UUID
+    source_config_id: UUID
+    url: str
+    proxies_tested: int
+    proxies_passed: int
+    proxies_failed: int
+    avg_response_ms: float | None
+    created_at: datetime
+
+
+class ProxyValidationLogResponse(BaseModel):
+    """Single validation log response with URL check details."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    source_config_id: UUID
+    status: str
+    proxies_tested: int
+    proxies_healthy: int
+    proxies_degraded: int
+    proxies_unhealthy: int
+    proxies_removed: int
+    duration_ms: float
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+    url_checks: list[ProxyUrlCheckLogResponse] = []
+
+
+class ProxyValidationLogListResponse(BaseModel):
+    """Paginated list of validation logs."""
+
+    items: list[ProxyValidationLogResponse]
+    total: int

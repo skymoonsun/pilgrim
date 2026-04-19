@@ -575,6 +575,12 @@ export const proxySourceApi = {
     request<FetchTriggerResponse>(`/proxy-sources/${id}/fetch`, {
       method: 'POST',
     }),
+
+  getFetchLogs: (id: string, skip = 0, limit = 20) =>
+    request<ProxyFetchLogListResponse>(`/proxy-sources/${id}/fetch-logs?skip=${skip}&limit=${limit}`),
+
+  getValidationLogs: (id: string, skip = 0, limit = 20) =>
+    request<ProxyValidationLogListResponse>(`/proxy-sources/${id}/validation-logs?skip=${skip}&limit=${limit}`),
 };
 
 // ── Valid Proxies ──────────────────────────────────────────
@@ -621,6 +627,61 @@ export interface ManualProxyCreateResult {
   created: number;
   skipped: number;
   items: ValidProxy[];
+}
+
+// ── Proxy Fetch / Validation Logs ────────────────────────────
+
+export interface ProxyFetchLog {
+  id: string;
+  source_config_id: string;
+  status: string;
+  proxies_found: number;
+  proxies_new: number;
+  proxies_updated: number;
+  proxies_truncated: number;
+  content_length: number;
+  duration_ms: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProxyFetchLogListResponse {
+  items: ProxyFetchLog[];
+  total: number;
+}
+
+export interface ProxyUrlCheckLog {
+  id: string;
+  validation_log_id: string;
+  source_config_id: string;
+  url: string;
+  proxies_tested: number;
+  proxies_passed: number;
+  proxies_failed: number;
+  avg_response_ms: number | null;
+  created_at: string;
+}
+
+export interface ProxyValidationLog {
+  id: string;
+  source_config_id: string;
+  status: string;
+  proxies_tested: number;
+  proxies_healthy: number;
+  proxies_degraded: number;
+  proxies_unhealthy: number;
+  proxies_removed: number;
+  duration_ms: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  url_checks: ProxyUrlCheckLog[];
+}
+
+export interface ProxyValidationLogListResponse {
+  items: ProxyValidationLog[];
+  total: number;
 }
 
 export const proxyApi = {

@@ -86,10 +86,7 @@ async def _check_schedules() -> dict[str, int]:
                             fetch_proxy_source.apply_async(
                                 args=[str(link.proxy_source_id)],
                                 queue="maintenance",
-                            )
-                            validate_proxies.apply_async(
-                                args=[str(link.proxy_source_id)],
-                                queue="maintenance",
+                                link=validate_proxies.s(),
                             )
 
                         # Update tracking

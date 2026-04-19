@@ -71,6 +71,18 @@ class ProxySourceConfig(Base, UUIDMixin, TimestampMixin):
         back_populates="source_config",
         cascade="all, delete-orphan",
     )
+    fetch_logs: Mapped[list["ProxyFetchLog"]] = relationship(
+        "ProxyFetchLog",
+        back_populates="source_config",
+        cascade="all, delete-orphan",
+        order_by="desc(ProxyFetchLog.created_at)",
+    )
+    validation_logs: Mapped[list["ProxyValidationLog"]] = relationship(
+        "ProxyValidationLog",
+        back_populates="source_config",
+        cascade="all, delete-orphan",
+        order_by="desc(ProxyValidationLog.created_at)",
+    )
 
     def __repr__(self) -> str:
         return (

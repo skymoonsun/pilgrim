@@ -12,6 +12,10 @@ from app.schemas.proxy import (
     ProxySourceResponse,
     ProxySourceUpdate,
     FetchTriggerResponse,
+    ProxyFetchLogListResponse,
+    ProxyFetchLogResponse,
+    ProxyValidationLogListResponse,
+    ProxyValidationLogResponse,
 )
 from app.services.proxy_source_service import ProxySourceService
 
@@ -101,11 +105,54 @@ async def trigger_fetch(
     service = ProxySourceService(session)
     config = await service.get_by_id(source_id)
 
-    from app.workers.tasks.proxy import fetch_proxy_source
-    task = fetch_proxy_source.delay(str(config.id))
+    from app.workers.tasks.proxy import fetch_proxy_source, validate_proxies
+
+    task = fetch_proxy_source.apply_async(
+        args=[str(config.id)],
+        queue="maintenance",
+        link=validate_proxies.s(),
+    )
 
     return FetchTriggerResponse(
         source_id=config.id,
         task_id=task.id,
         message=f"Fetch task queued for source '{config.name}'",
+    )
+
+
+@router.get(
+    "/{source_id}/fetch-logs",
+    response_model=ProxyFetchLogListResponse,
+)
+async def list_fetch_logs(
+    source_id: UUID = Path(..., description="Proxy source UUID"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
+) -> ProxyFetchLogListResponse:
+    """List fetch logs for a proxy source."""
+    service = ProxySourceService(session)
+    logs, total = await service.list_fetch_logs(source_id, skip=skip, limit=limit)
+    return ProxyFetchLogListResponse(
+        items=[ProxyFetchLogResponse.model_validate(l) for l in logs],
+        total=total,
+    )
+
+
+@router.get(
+    "/{source_id}/validation-logs",
+    response_model=ProxyValidationLogListResponse,
+)
+async def list_validation_logs(
+    source_id: UUID = Path(..., description="Proxy source UUID"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_async_session),
+) -> ProxyValidationLogListResponse:
+    """List validation logs for a proxy source, with URL check details."""
+    service = ProxySourceService(session)
+    logs, total = await service.list_validation_logs(source_id, skip=skip, limit=limit)
+    return ProxyValidationLogListResponse(
+        items=[ProxyValidationLogResponse.model_validate(l) for l in logs],
+        total=total,
     )

@@ -299,6 +299,18 @@ class ValidProxyService:
         logger.info("Deleted %d expired proxies", count)
         return count
 
+    async def delete_unhealthy_by_source(self, source_config_id: UUID) -> int:
+        """Delete all UNHEALTHY proxies for a source. Returns count deleted."""
+        stmt = delete(ValidProxy).where(
+            ValidProxy.source_config_id == source_config_id,
+            ValidProxy.health == ProxyHealthStatus.UNHEALTHY,
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        count = result.rowcount
+        logger.info("Deleted %d unhealthy proxies for source %s", count, source_config_id)
+        return count
+
     async def get_random_healthy(
         self,
         protocol: ProxyProtocol | None = None,

@@ -24,6 +24,9 @@ from app.models.email_notification_config import EmailNotificationConfig
 from app.models.email_notification_log import EmailNotificationLog
 from app.models.proxy_source_config import ProxySourceConfig
 from app.models.valid_proxy import ValidProxy
+from app.models.proxy_fetch_log import ProxyFetchLog
+from app.models.proxy_validation_log import ProxyValidationLog
+from app.models.proxy_url_check_log import ProxyUrlCheckLog
 from app.models.seed_version import SeedVersion
 
 __all__ = [
@@ -51,5 +54,8 @@ __all__ = [
     "EmailNotificationLog",
     "ProxySourceConfig",
     "ValidProxy",
+    "ProxyFetchLog",
+    "ProxyValidationLog",
+    "ProxyUrlCheckLog",
     "SeedVersion",
 ]
