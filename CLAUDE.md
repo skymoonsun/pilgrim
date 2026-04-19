@@ -27,9 +27,11 @@ This repository is **Pilgrim**, a config-driven scraping/crawling service.
 | `code-conventions.md` | `**/*.py` | `code-conventions.mdc` |
 | `api-design.md` | `app/api/**/*.py` | `api-design.mdc` |
 | `database-design.md` | models, schemas, db, alembic | `database-design.mdc` |
+| `proxy-ai.md` | proxy models/services/schemas, AI endpoints, worker tasks, frontend proxy pages | `proxy-ai.mdc` |
 | `scraping-strategies.md` | `app/crawlers/**/*` (workers: see Antigravity `pilgrim-scraping-workers.md`) | `scraping-strategies.mdc` |
 | `celery-scheduler.md` | `app/workers/**/*` | `celery-scheduler.mdc` |
 | `config-environment.md` | `app/core`, `app/integrations` | `config-environment.mdc` |
+| `frontend.md` | `frontend/src/**/*` | `frontend.mdc` |
 | `docker-infrastructure.md` | Dockerfiles, compose, `docker/` | `docker-infrastructure.mdc` |
 | `testing-guidelines.md` | `tests/**/*` | `testing-guidelines.mdc` |
 

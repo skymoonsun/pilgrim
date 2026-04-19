@@ -82,6 +82,9 @@ celery_app.conf.task_routes = {
     "pilgrim.scrape.run_job_high": {"queue": "crawl_high"},
     "pilgrim.scrape.run_job": {"queue": "crawl_default"},
     "pilgrim.scrape.backfill": {"queue": "crawl_low"},
+    "pilgrim.proxy.fetch_proxy_source": {"queue": "maintenance"},
+    "pilgrim.proxy.validate_proxies": {"queue": "maintenance"},
+    "pilgrim.proxy.expire_proxies": {"queue": "maintenance"},
     "pilgrim.maintenance.*": {"queue": "maintenance"},
 }
 ```

@@ -1,6 +1,6 @@
 ---
 trigger: always_on
-description: "Pilgrim frontend: React + TypeScript + Vite dashboard — conventions, design system, and component guidelines. Mirrors .cursor/rules/frontend.mdc."
+description: "Pilgrim frontend: React + TypeScript + Vite dashboard — conventions, design system, component guidelines, routes. Mirrors .cursor/rules/frontend.mdc."
 ---
 
 # Pilgrim — frontend
@@ -9,7 +9,7 @@ description: "Pilgrim frontend: React + TypeScript + Vite dashboard — conventi
 
 # Frontend — Pilgrim Dashboard
 
-Pilgrim's frontend is a **React 19 + TypeScript + Vite** single-page application that provides a dashboard for managing crawl configurations, testing scrapes, and monitoring jobs.
+Pilgrim's frontend is a **React 19 + TypeScript + Vite** single-page application that provides a dashboard for managing crawl configurations, testing scrapes, monitoring jobs, proxy sources, and validated proxies.
 
 ## 1. Stack
 
@@ -34,7 +34,10 @@ frontend/src/
 │   ├── Configurations/         # CRUD table for crawl configs
 │   ├── ScrapePlayground/       # Config + URL → JSON response
 │   ├── Jobs/                   # Job listing with status badges
-│   └── Settings/               # App settings (placeholder)
+│   ├── Schedules/              # Schedule CRUD, callbacks, email notifications
+│   ├── ProxySources/           # Proxy source CRUD + AI analysis + verify
+│   ├── Proxies/                # Valid proxy list + add modal (single/bulk)
+│   └── Settings/               # App settings
 ├── App.tsx                     # React Router routes
 ├── main.tsx                    # Entry (BrowserRouter)
 └── index.css                   # Design system (CSS variables)
@@ -56,6 +59,7 @@ frontend/src/
 - Layout in `src/components/layout/`
 - API calls through `src/api/client.ts` — never raw `fetch()` in components
 - Loading = `.spinner` class; empty = `.empty-state` class + SVG icon
+- **Modals** must use `createPortal(modal, document.body)` — `.animate-in` CSS `transform` breaks `position: fixed` for child modals
 
 ## 5. API proxy
 
@@ -69,6 +73,9 @@ Vite proxies `/api/*` → `http://api:8000` (Docker service name). **Never hardc
 | `/configurations` | CRUD `/crawl-configs/` |
 | `/scrape` | `POST /scrape/`, `GET /crawl-configs/` |
 | `/jobs` | `GET /crawl/jobs` |
+| `/schedules` | CRUD `/schedules/`, callbacks, email notifications |
+| `/proxy-sources` | CRUD `/proxy-sources/`, `/ai/suggest-proxy-source`, `/ai/verify-proxy-source` |
+| `/proxies` | `GET /proxies/`, `POST /proxies/`, `POST /proxies/bulk`, `DELETE /proxies/{id}` |
 
 ## 7. Adding a new page
 

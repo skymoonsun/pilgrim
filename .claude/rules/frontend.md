@@ -2,7 +2,7 @@
 
 # Frontend — Pilgrim Dashboard
 
-Pilgrim's frontend is a **React 19 + TypeScript + Vite** single-page application that provides a dashboard for managing crawl configurations, testing scrapes, and monitoring jobs.
+Pilgrim's frontend is a **React 19 + TypeScript + Vite** single-page application that provides a dashboard for managing crawl configurations, testing scrapes, monitoring jobs, proxy sources, and validated proxies.
 
 ## 1. Stack
 
@@ -27,7 +27,10 @@ frontend/src/
 │   ├── Configurations/         # CRUD table for crawl configs
 │   ├── ScrapePlayground/       # Config + URL → JSON response
 │   ├── Jobs/                   # Job listing with status badges
-│   └── Settings/               # App settings (placeholder)
+│   ├── Schedules/              # Schedule CRUD, detail, callbacks, email notifications
+│   ├── ProxySources/           # Proxy source CRUD + AI analysis + verify
+│   ├── Proxies/                # Valid proxy list + add modal (single/bulk)
+│   └── Settings/               # App settings
 ├── App.tsx                     # React Router routes
 ├── main.tsx                    # Entry (BrowserRouter)
 └── index.css                   # Design system (CSS variables)
@@ -48,7 +51,9 @@ frontend/src/
 - Pages in `src/pages/<PageName>/<PageName>.tsx`
 - Layout in `src/components/layout/`
 - API calls through `src/api/client.ts` — never raw `fetch()` in components
+- All API types defined in `client.ts` alongside the methods
 - Loading = `.spinner` class; empty = `.empty-state` class + SVG icon
+- **Modals** must use `createPortal(modal, document.body)` — the `.animate-in` CSS class uses `transform: translateY()` which creates a new containing block, breaking `position: fixed` for child modals
 
 ## 5. API proxy
 
@@ -56,12 +61,16 @@ Vite proxies `/api/*` → `http://api:8000` (Docker service name). **Never hardc
 
 ## 6. Route ↔ API mapping
 
-| Route | Backend endpoints |
-|-------|-------------------|
-| `/` | `GET /health/readiness`, `GET /crawl-configs/`, `GET /crawl/jobs` |
-| `/configurations` | CRUD `/crawl-configs/` |
-| `/scrape` | `POST /scrape/`, `GET /crawl-configs/` |
-| `/jobs` | `GET /crawl/jobs` |
+| Route | Page | Backend endpoints |
+|-------|------|-------------------|
+| `/` | Dashboard | `GET /health/readiness`, `GET /crawl-configs/`, `GET /crawl/jobs` |
+| `/configurations` | Configurations | CRUD `/crawl-configs/` |
+| `/scrape` | ScrapePlayground | `POST /scrape/`, `GET /crawl-configs/` |
+| `/jobs` | Jobs | `GET /crawl/jobs` |
+| `/schedules` | Schedules | CRUD `/schedules/`, callbacks, email notifications |
+| `/proxy-sources` | ProxySources | CRUD `/proxy-sources/`, `/ai/suggest-proxy-source`, `/ai/verify-proxy-source` |
+| `/proxies` | Proxies | `GET /proxies/`, `POST /proxies/`, `POST /proxies/bulk`, `DELETE /proxies/{id}` |
+| `/settings` | Settings | (none yet) |
 
 ## 7. Adding a new page
 

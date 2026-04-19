@@ -15,11 +15,11 @@ Pilgrim is a **large-scale crawler service**: **FastAPI** for control-plane APIs
 
 | Component | Responsibility |
 |-----------|----------------|
-| **API** | Auth, CRUD for targets/configs/schedules, enqueue jobs, read status |
-| **Worker** | Execute scrape tasks, run spiders, write results |
-| **Beat** | Periodic schedules (cron / interval) → enqueue tasks |
+| **API** | Auth, CRUD for configs/schedules/proxies, AI endpoints, enqueue jobs, read status |
+| **Worker** | Execute scrape tasks, run spiders, proxy fetch/validate, write results |
+| **Beat** | Periodic schedules (cron / interval), proxy expiry → enqueue tasks |
 | **Redis** | Broker, result backend cache, optional rate-limit / locks |
-| **PostgreSQL** | Sources, crawl configs, jobs, results, audit |
+| **PostgreSQL** | Configs, jobs, schedules, proxy sources, valid proxies, results, audit |
 
 ## 2. Recommended directory layout
 
@@ -40,7 +40,11 @@ app/
 ├── services/
 │   ├── crawl_job_service.py
 │   ├── crawl_config_service.py
-│   └── schedule_service.py
+│   ├── schedule_service.py
+│   ├── proxy_source_service.py
+│   ├── valid_proxy_service.py
+│   ├── proxy_parser.py
+│   └── ai_service.py
 ├── crawlers/
 │   ├── factory.py          # Scrapling profile → fetcher/session
 │   ├── extraction.py       # Config-driven extraction
@@ -50,9 +54,13 @@ app/
 │   ├── celery_app.py
 │   └── tasks/
 │       ├── scrape.py
+│       ├── proxy.py
 │       └── maintenance.py
 ├── integrations/
-│   └── redis.py
+│   ├── redis.py
+│   ├── llm_base.py
+│   ├── llm_provider.py
+│   └── ollama.py
 └── main.py
 ```
 
