@@ -465,6 +465,7 @@ Two Compose files are provided:
 ## 📚 Documentation
 
 - [Crawl Configurations Guide](docs/crawl-configs.md) — Extraction specs, scraper profiles, fetch options, and real-world examples
+- [Proxy Management Guide](docs/proxy-management.md) — Proxy sources, formats, validation, manual proxies, AI analysis, and rotation
 
 ## License
 
