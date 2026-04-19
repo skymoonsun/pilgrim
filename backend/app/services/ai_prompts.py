@@ -131,3 +131,72 @@ HTML:
 {html}
 
 JSON response:"""
+
+# ── Proxy source suggestion ────────────────────────────────────────
+
+PROXY_SOURCE_SUGGESTION_PROMPT = """\
+You are analyzing the content of a proxy list source URL. Your task is to identify the
+format and structure so that the system can automatically parse proxies from this source.
+
+Content sample (first ~3000 chars):
+{content_sample}
+
+Determine the format type and provide an extraction specification:
+
+1. **format_type**: One of "raw_text", "json", "csv", or "xml"
+   - "raw_text": Plain text with one proxy per line (ip:port, protocol://ip:port, etc.)
+   - "json": JSON data containing proxy entries
+   - "csv": CSV data with proxy fields
+   - "xml": XML data containing proxy entries
+
+2. **extraction_spec** (only for json/csv/xml):
+   For JSON, provide:
+   {{
+     "list_path": "<dot-notation path to the array of proxy objects>",
+     "fields": {{
+       "ip": "<key/path for IP address>",
+       "port": "<key/path for port number>",
+       "protocol": "<key/path for protocol (optional)>",
+       "username": "<key/path for username (optional)>",
+       "password": "<key/path for password (optional)>"
+     }}
+   }}
+
+   For CSV, provide:
+   {{
+     "delimiter": "<delimiter character>",
+     "fields": {{
+       "ip": <column index or header name>,
+       "port": <column index or header name>,
+       "protocol": <column index or header name (optional)>,
+       "username": <column index or header name (optional)>,
+       "password": <column index or header name (optional)>
+     }}
+   }}
+
+   For XML, provide:
+   {{
+     "item_path": "<xpath to proxy elements>",
+     "fields": {{
+       "ip": "<xpath or tag name for IP>",
+       "port": "<xpath or tag name for port>",
+       "protocol": "<xpath or tag name for protocol (optional)>",
+       "username": "<xpath or tag name for username (optional)>",
+       "password": "<xpath or tag name for password (optional)>"
+     }}
+   }}
+
+   For raw_text format, set extraction_spec to null.
+
+3. **suggested_name**: A short, descriptive name for this source (e.g. "Free Proxy List API", "Geo Proxy CSV")
+
+4. **description**: Brief description of what this source provides
+
+Rules:
+- If the content contains plain IP:port lines or protocol://ip:port patterns, use "raw_text".
+- If the content is valid JSON with proxy objects, use "json" and provide a proper extraction_spec.
+- If the content has comma/tab separated values with header or data rows, use "csv".
+- If the content looks like XML with proxy elements, use "xml".
+- You MUST respond with ONLY the JSON object. No other text.
+
+JSON response:"""

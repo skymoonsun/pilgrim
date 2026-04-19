@@ -423,6 +423,35 @@ export const schedulesApi = {
 
 // ── AI ─────────────────────────────────────────────────────
 
+export interface ProxySourceSuggestionRequest {
+  url: string;
+}
+
+export interface ProxySourceSuggestionResponse {
+  format_type: string;
+  extraction_spec: Record<string, unknown> | null;
+  suggested_name: string;
+  description: string;
+  sample_proxies: { ip: string; port: number; protocol: string }[];
+  model_used: string;
+  content_length: number;
+}
+
+export interface ProxySourceVerifyRequest {
+  url: string;
+  format_type: string;
+  extraction_spec: Record<string, unknown> | null;
+}
+
+export interface ProxySourceVerifyResult {
+  success: boolean;
+  total_parsed: number;
+  sample_proxies: { ip: string; port: number; protocol: string }[];
+  format_type: string;
+  content_length: number;
+  error: string | null;
+}
+
 export const aiApi = {
   status: () => request<AIStatusResponse>('/ai/status'),
 
@@ -434,6 +463,18 @@ export const aiApi = {
 
   verifySpec: (data: VerifySpecRequest) =>
     request<SpecVerificationResponse>('/ai/verify-spec', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  verifyProxySource: (data: ProxySourceVerifyRequest) =>
+    request<ProxySourceVerifyResult>('/ai/verify-proxy-source', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  suggestProxySource: (data: ProxySourceSuggestionRequest) =>
+    request<ProxySourceSuggestionResponse>('/ai/suggest-proxy-source', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

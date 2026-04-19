@@ -38,10 +38,14 @@ from app.schemas.ai import (
     ExtractionSpecAIResponse,
     ExtractionSpecSchema,
     FieldVerificationResult,
+    ProxySourceSuggestionResponse,
+    ProxySourceSuggestionSchema,
+    ProxySourceVerifyResult,
     SpecVerificationResponse,
 )
 from app.services.ai_prompts import (
     GENERATE_SPEC_PROMPT,
+    PROXY_SOURCE_SUGGESTION_PROMPT,
     REFINE_SPEC_PROMPT,
     SYSTEM_PROMPT,
 )
@@ -136,6 +140,140 @@ class AIService:
             enabled=True,
             provider=settings.llm_provider,
             reachable=reachable,
+        )
+
+    # ── Proxy source suggestion API ────────────────────────────────
+
+    async def suggest_proxy_source(
+        self, url: str
+    ) -> ProxySourceSuggestionResponse:
+        """Analyze a proxy source URL and suggest configuration.
+
+        For raw_text format (ip:port patterns), short-circuits without
+        an LLM call.  For JSON/CSV/XML, fetches content and asks the
+        LLM to identify the format and extraction spec.
+        """
+        settings = get_settings()
+        if not settings.ai_enabled:
+            raise AIDisabledError()
+
+        # 1. Fetch the proxy list content via httpx (not Scrapling)
+        content = await self._fetch_proxy_source_content(url)
+
+        # 2. Check if content looks like raw text (ip:port patterns)
+        sample = content[:3000]
+        if self._looks_like_raw_text(sample):
+            sample_proxies = self._parse_raw_text_sample(sample)
+            return ProxySourceSuggestionResponse(
+                format_type="raw_text",
+                extraction_spec=None,
+                suggested_name=self._extract_source_name(url),
+                description="Plain text proxy list (ip:port format)",
+                sample_proxies=sample_proxies,
+                model_used="heuristic",
+                content_length=len(content),
+            )
+
+        # 3. Send to LLM for structured analysis
+        prompt = PROXY_SOURCE_SUGGESTION_PROMPT.format(
+            content_sample=sample,
+        )
+
+        provider = await self._get_provider()
+        llm_result: ProxySourceSuggestionSchema = await provider.generate(  # type: ignore[assignment]
+            prompt=prompt,
+            schema=ProxySourceSuggestionSchema,
+            system=SYSTEM_PROMPT,
+        )
+
+        # 4. Parse sample proxies using the suggested format
+        sample_proxies = self._parse_sample_proxies(
+            content, llm_result.format_type, llm_result.extraction_spec
+        )
+
+        return ProxySourceSuggestionResponse(
+            format_type=llm_result.format_type,
+            extraction_spec=llm_result.extraction_spec,
+            suggested_name=llm_result.suggested_name,
+            description=llm_result.description,
+            sample_proxies=sample_proxies,
+            model_used=getattr(provider, "_model", "unknown"),
+            content_length=len(content),
+        )
+
+    # ── Proxy source verification ─────────────────────────────────────
+
+    async def verify_proxy_source(
+        self,
+        url: str,
+        format_type: str,
+        extraction_spec: dict | None = None,
+    ) -> ProxySourceVerifyResult:
+        """Fetch and parse a proxy source to verify the configuration.
+
+        Does NOT use the LLM — pure fetch + parse verification so the
+        user can confirm their format_type and extraction_spec actually
+        produce proxies before saving.
+        """
+        from app.models.enums import ProxyFormatType
+        from app.services.proxy_parser import parse_proxy_list
+
+        # Validate format_type
+        try:
+            fmt = ProxyFormatType(format_type)
+        except ValueError:
+            return ProxySourceVerifyResult(
+                success=False,
+                total_parsed=0,
+                sample_proxies=[],
+                format_type=format_type,
+                content_length=0,
+                error=f"Invalid format_type: {format_type}. "
+                      f"Must be one of: raw_text, json, csv, xml",
+            )
+
+        # Fetch content
+        content = await self._fetch_proxy_source_content(url)
+
+        # Parse
+        try:
+            parsed = parse_proxy_list(content, fmt, extraction_spec)
+        except Exception as exc:
+            return ProxySourceVerifyResult(
+                success=False,
+                total_parsed=0,
+                sample_proxies=[],
+                format_type=format_type,
+                content_length=len(content),
+                error=f"Parse error: {exc}",
+            )
+
+        if not parsed:
+            return ProxySourceVerifyResult(
+                success=False,
+                total_parsed=0,
+                sample_proxies=[],
+                format_type=format_type,
+                content_length=len(content),
+                error="No proxies could be parsed from the source. "
+                      "Check the format_type and extraction_spec.",
+            )
+
+        sample_proxies = [
+            {
+                "ip": p.ip,
+                "port": p.port,
+                "protocol": p.protocol.value,
+            }
+            for p in parsed[:10]
+        ]
+
+        return ProxySourceVerifyResult(
+            success=True,
+            total_parsed=len(parsed),
+            sample_proxies=sample_proxies,
+            format_type=format_type,
+            content_length=len(content),
         )
 
     # ── Verification API ────────────────────────────────────────────
@@ -614,6 +752,109 @@ class AIService:
                     original_fields[name] = field_spec
 
         return merged
+
+    @staticmethod
+    async def _fetch_proxy_source_content(url: str) -> str:
+        """Fetch proxy list content via httpx (not Scrapling)."""
+        try:
+            async with httpx.AsyncClient(
+                timeout=30, follow_redirects=True
+            ) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                return resp.text
+        except httpx.HTTPError as exc:
+            raise AIInvalidPageError(url, f"Failed to fetch source: {exc}") from exc
+
+    @staticmethod
+    def _looks_like_raw_text(sample: str) -> bool:
+        """Heuristic: does the content look like raw ip:port text?"""
+        from app.services.proxy_parser import _HOST_RE, _RE_HOST_PORT, _RE_PROTOCOL_HOST_PORT
+
+        lines = [ln.strip() for ln in sample.splitlines() if ln.strip()]
+        if not lines:
+            return False
+
+        # Count lines that match known raw text patterns
+        matches = 0
+        for line in lines[:20]:
+            if _RE_PROTOCOL_HOST_PORT.match(line) or _RE_HOST_PORT.match(line):
+                matches += 1
+
+        # If most lines match, it's raw text
+        return matches / min(len(lines), 20) >= 0.5
+
+    @staticmethod
+    def _parse_raw_text_sample(sample: str) -> list[dict]:
+        """Parse a few sample proxies from raw text for preview."""
+        from app.services.proxy_parser import parse_proxy_list
+
+        try:
+            parsed = parse_proxy_list(sample, "raw_text", None)
+            return [
+                {
+                    "ip": p.ip,
+                    "port": p.port,
+                    "protocol": p.protocol.value,
+                }
+                for p in parsed[:5]
+            ]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _parse_sample_proxies(
+        content: str,
+        format_type: str,
+        extraction_spec: dict | None,
+    ) -> list[dict]:
+        """Parse sample proxies using the suggested format and spec.
+
+        For JSON format, truncating content would break ``json.loads``,
+        so we pass the full content but limit output to 5 proxies.
+        """
+        from app.models.enums import ProxyFormatType
+        from app.services.proxy_parser import parse_proxy_list
+
+        try:
+            fmt = ProxyFormatType(format_type)
+        except ValueError:
+            return []
+
+        # For JSON, truncating content would produce invalid JSON.
+        # Use full content for JSON/XML; truncate for text formats.
+        sample_content = content if fmt in (
+            ProxyFormatType.JSON, ProxyFormatType.XML
+        ) else content[:10000]
+
+        try:
+            parsed = parse_proxy_list(sample_content, fmt, extraction_spec)
+            return [
+                {
+                    "ip": p.ip,
+                    "port": p.port,
+                    "protocol": p.protocol.value,
+                }
+                for p in parsed[:5]
+            ]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _extract_source_name(url: str) -> str:
+        """Derive a short name from the URL."""
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            host = parsed.hostname or "unknown"
+            parts = host.split(".")
+            # Take the main domain part (e.g. "example" from "www.example.com")
+            if len(parts) >= 2:
+                return parts[-2].capitalize() + " Proxy List"
+            return host.capitalize() + " Proxy List"
+        except Exception:
+            return "Proxy Source"
 
     async def _check_provider_reachable(self) -> bool:
         """Lightweight reachability check for the configured provider.

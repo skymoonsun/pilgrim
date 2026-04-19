@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { proxySourceApi } from '../../api/client';
 import type { ProxySourceConfig } from '../../api/client';
-import { IconPlus, IconEye, IconTrash, IconGlobe, IconRefresh } from '../../components/icons/Icons';
+import { IconPlus, IconEye, IconEdit, IconTrash, IconGlobe, IconRefresh } from '../../components/icons/Icons';
 
 export default function ProxySources() {
   const [sources, setSources] = useState<ProxySourceConfig[]>([]);
@@ -126,6 +126,9 @@ export default function ProxySources() {
                     <div className="action-btns">
                       <Link to={`/proxy-sources/${source.id}`} className="action-btn" title="View">
                         <IconEye size={16} />
+                      </Link>
+                      <Link to={`/proxy-sources/${source.id}/edit`} className="action-btn" title="Edit">
+                        <IconEdit size={16} />
                       </Link>
                       <button
                         type="button"

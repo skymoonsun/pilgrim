@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { proxySourceApi, aiApi } from '../../api/client';
 import type { ProxySourceSuggestionResponse, ProxySourceVerifyResult } from '../../api/client';
-import { IconSparkle } from '../../components/icons/Icons';
+import { IconGlobe, IconSparkle } from '../../components/icons/Icons';
 
-export default function ProxySourceCreate() {
+export default function ProxySourceEdit() {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   const [form, setForm] = useState({
     name: '',
@@ -21,13 +23,12 @@ export default function ProxySourceCreate() {
     is_active: true,
   });
 
-  const [validationUrls, setValidationUrls] = useState('https://httpbin.org/ip');
+  const [validationUrls, setValidationUrls] = useState('');
   const [extractionSpec, setExtractionSpec] = useState('');
   const [sourceHeaders, setSourceHeaders] = useState('');
 
   // AI state
   const [aiAvailable, setAiAvailable] = useState(false);
-  const [aiChecked, setAiChecked] = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -41,12 +42,37 @@ export default function ProxySourceCreate() {
   useEffect(() => {
     aiApi.status().then((res) => {
       setAiAvailable(res.enabled && res.reachable);
-      setAiChecked(true);
-    }).catch(() => {
-      setAiAvailable(false);
-      setAiChecked(true);
-    });
+    }).catch(() => setAiAvailable(false));
   }, []);
+
+  useEffect(() => {
+    if (id) loadSource(id);
+  }, [id]);
+
+  async function loadSource(sourceId: string) {
+    setLoading(true);
+    try {
+      const source = await proxySourceApi.get(sourceId);
+      setForm({
+        name: source.name,
+        description: source.description || '',
+        url: source.url,
+        format_type: source.format_type,
+        require_all_urls: source.require_all_urls,
+        validation_timeout: source.validation_timeout,
+        fetch_interval_seconds: source.fetch_interval_seconds,
+        proxy_ttl_seconds: source.proxy_ttl_seconds,
+        is_active: source.is_active,
+      });
+      const urls = (source.validation_urls as any)?.urls || [];
+      setValidationUrls(urls.join('\n'));
+      setExtractionSpec(source.extraction_spec ? JSON.stringify(source.extraction_spec, null, 2) : '');
+      setSourceHeaders(source.source_headers ? JSON.stringify(source.source_headers, null, 2) : '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Proxy source not found');
+    }
+    setLoading(false);
+  }
 
   async function handleAiSuggest(e: React.FormEvent) {
     e.preventDefault();
@@ -116,8 +142,9 @@ export default function ProxySourceCreate() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!id) return;
+    setError('');
     setSaving(true);
-    setError(null);
 
     try {
       const data: Record<string, unknown> = {
@@ -142,6 +169,8 @@ export default function ProxySourceCreate() {
           setSaving(false);
           return;
         }
+      } else {
+        data.extraction_spec = null;
       }
 
       if (sourceHeaders.trim()) {
@@ -152,28 +181,60 @@ export default function ProxySourceCreate() {
           setSaving(false);
           return;
         }
+      } else {
+        data.source_headers = null;
       }
 
-      const result = await proxySourceApi.create(data as any);
-      navigate(`/proxy-sources/${result.id}`);
+      await proxySourceApi.update(id, data as any);
+      navigate('/proxy-sources/' + id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create proxy source');
+      setError(err instanceof Error ? err.message : 'Failed to update proxy source');
     } finally {
       setSaving(false);
     }
+  }
+
+  if (loading) {
+    return <div className="loading-overlay"><div className="spinner" /></div>;
+  }
+
+  if (error && !form.name) {
+    return (
+      <div className="animate-in">
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <div className="empty-state-icon"><IconGlobe size={48} /></div>
+          <div className="empty-state-text">{error}</div>
+          <Link to="/proxy-sources" className="btn btn-secondary" style={{ marginTop: 16 }}>Back</Link>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="animate-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">New Proxy Source</h1>
-          <p className="page-subtitle">Configure a proxy list source</p>
+          <h1 className="page-title">Edit: {form.name}</h1>
+          <p className="page-subtitle">Modify proxy source configuration</p>
         </div>
       </div>
 
+      {error && (
+        <div style={{
+          background: 'var(--status-failed-bg)',
+          border: '1px solid rgba(255,82,82,0.3)',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 18px',
+          color: 'var(--status-failed)',
+          fontSize: '0.85rem',
+          marginBottom: 20,
+        }}>
+          {error}
+        </div>
+      )}
+
       {/* AI Analysis Panel */}
-      {aiChecked && aiAvailable && (
+      {aiAvailable && (
         <div className="card" style={{ marginBottom: 24, padding: 20 }}>
           <div
             style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
@@ -254,12 +315,6 @@ export default function ProxySourceCreate() {
 
       <div className="card" style={{ maxWidth: 720 }}>
         <form onSubmit={handleSubmit}>
-          {error && (
-            <div style={{ color: 'var(--status-failed)', marginBottom: 16, fontSize: '0.85rem' }}>
-              {error}
-            </div>
-          )}
-
           <div className="form-group">
             <label className="form-label">Name *</label>
             <input
@@ -481,9 +536,9 @@ export default function ProxySourceCreate() {
               type="checkbox"
               checked={form.require_all_urls}
               onChange={(e) => setForm({ ...form, require_all_urls: e.target.checked })}
-              id="require_all"
+              id="edit_require_all"
             />
-            <label htmlFor="require_all" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            <label htmlFor="edit_require_all" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Require all validation URLs to succeed
             </label>
           </div>
@@ -493,21 +548,21 @@ export default function ProxySourceCreate() {
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-              id="is_active"
+              id="edit_is_active"
             />
-            <label htmlFor="is_active" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            <label htmlFor="edit_is_active" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Active
             </label>
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Creating...' : 'Create Source'}
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => navigate('/proxy-sources')}
+              onClick={() => navigate('/proxy-sources/' + id)}
             >
               Cancel
             </button>

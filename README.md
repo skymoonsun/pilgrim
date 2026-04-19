@@ -26,6 +26,8 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 
 - **Config-driven scraping** — Define extraction rules (CSS/XPath selectors) once, reuse across multiple URLs
 - **AI-powered config generation** — Describe what to extract in natural language; AI generates the selectors for you
+- **Proxy management** — Fetch, parse, validate, and rotate proxies from configurable sources with health monitoring
+- **AI-powered proxy source analysis** — Paste a proxy list URL and let AI detect the format and suggest extraction settings
 - **Scrapling-first** — Uses [Scrapling](https://github.com/D4Vinci/Scrapling) for fetching & parsing with multiple profiles (static, stealth, dynamic)
 - **Schedule management** — Cron & interval-based scheduling with config-to-URL mapping
 - **Webhook callbacks** — Post results to external services with field mapping and retry logic
@@ -100,6 +102,8 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | **Configurations** | `/configurations` | Manage crawl configs (CRUD) |
 | **Scrape Playground** | `/scrape` | Test configs with real URLs (live) |
 | **Jobs** | `/jobs` | Monitor async crawl jobs |
+| **Proxy Sources** | `/proxy-sources` | Manage proxy list sources (CRUD) |
+| **Proxies** | `/proxies` | View and filter validated proxies |
 | **Settings** | `/settings` | Application configuration |
 
 - Dark theme with glassmorphism cards and subtle animations
@@ -133,7 +137,19 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | `PUT` | `/api/v1/schedules/{id}/email-notification` | Set or update email notification |
 | `DELETE` | `/api/v1/schedules/{id}/email-notification` | Remove email notification |
 | `POST` | `/api/v1/ai/generate-spec` | Generate extraction spec via AI |
+| `POST` | `/api/v1/ai/verify-spec` | Verify extraction spec against a URL |
+| `POST` | `/api/v1/ai/suggest-proxy-source` | AI-analyze a proxy source URL |
 | `GET` | `/api/v1/ai/status` | Check AI feature availability |
+| `POST` | `/api/v1/proxy-sources/` | Create a proxy source config |
+| `GET` | `/api/v1/proxy-sources/` | List all proxy source configs |
+| `GET` | `/api/v1/proxy-sources/{id}` | Get proxy source by ID |
+| `PATCH` | `/api/v1/proxy-sources/{id}` | Update a proxy source config |
+| `DELETE` | `/api/v1/proxy-sources/{id}` | Delete a proxy source config |
+| `POST` | `/api/v1/proxy-sources/{id}/fetch` | Trigger proxy fetch for a source |
+| `GET` | `/api/v1/proxies/` | List validated proxies (with filters) |
+| `GET` | `/api/v1/proxies/{id}` | Get proxy by ID |
+| `DELETE` | `/api/v1/proxies/{id}` | Delete a proxy |
+| `POST` | `/api/v1/proxies/{source_id}/validate` | Trigger proxy validation for a source |
 
 ### Example: Create a Config & Scrape
 
@@ -186,7 +202,7 @@ pilgrim/
 │   ├── src/
 │   │   ├── api/                # Typed API client
 │   │   ├── components/         # Layout (Sidebar, Header) + Icons
-│   │   ├── pages/              # Dashboard, Configurations, Scrape, Jobs, Settings
+│   │   ├── pages/              # Dashboard, Configurations, Scrape, Jobs, ProxySources, Proxies, Settings
 │   │   ├── App.tsx             # React Router setup
 │   │   └── index.css           # Design system (CSS variables, dark theme)
 │   ├── Dockerfile              # Node 22 Alpine + Vite dev server
@@ -312,6 +328,86 @@ No changes to the service or API layer are needed.
 ### Scraper profile selection
 
 The AI endpoint accepts an optional `scraper_profile` parameter. Use `fetcher` (default) for static pages or `http_session` for sites requiring cookies. The `stealth` and `dynamic` profiles require browser binaries that are only available in the worker container.
+
+## 🔌 Proxy Management
+
+Pilgrim includes a built-in proxy management system for fetching, parsing, validating, and rotating proxies from configurable sources.
+
+### Supported formats
+
+| Format | Description |
+|--------|-------------|
+| `raw_text` | Plain text lists — `ip:port`, `protocol://ip:port`, `ip:port:user:pass` |
+| `json` | JSON arrays/objects with extraction specs for field mapping |
+| `csv` | CSV data with configurable delimiters and column mapping |
+| `xml` | XML documents with XPath-based element selection |
+
+### Creating a proxy source
+
+```bash
+# Simple raw text source
+curl -X POST http://localhost:8000/api/v1/proxy-sources/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Free Proxy List",
+    "url": "https://example.com/proxies.txt",
+    "format_type": "raw_text",
+    "validation_urls": {"urls": ["https://httpbin.org/ip"]},
+    "fetch_interval_seconds": 3600,
+    "proxy_ttl_seconds": 86400
+  }'
+
+# JSON source with extraction spec
+curl -X POST http://localhost:8000/api/v1/proxy-sources/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "JSON Proxy API",
+    "url": "https://api.example.com/proxies",
+    "format_type": "json",
+    "extraction_spec": {
+      "list_path": "data",
+      "fields": {"ip": "ip_address", "port": "port", "protocol": "type"}
+    },
+    "validation_urls": {"urls": ["https://httpbin.org/ip"]}
+  }'
+```
+
+### Fetching & validating
+
+```bash
+# Trigger a fetch (downloads and parses the proxy list)
+curl -X POST http://localhost:8000/api/v1/proxy-sources/{id}/fetch
+
+# Validate fetched proxies against test URLs
+curl -X POST http://localhost:8000/api/v1/proxies/{source_id}/validate
+
+# List healthy proxies
+curl http://localhost:8000/api/v1/proxies/?health=healthy&limit=50
+```
+
+### AI-powered proxy source analysis
+
+When AI is enabled (`PILGRIM_AI_ENABLED=true`), the "New Proxy Source" page shows an **AI Analysis** panel. Paste a proxy list URL and click **Analyze** — Pilgrim will:
+
+1. Fetch the content from the URL
+2. Detect the format (raw_text, JSON, CSV, XML) — raw_text detection is heuristic (no LLM call needed)
+3. For structured formats, call the LLM to suggest an extraction spec, name, and description
+4. Auto-fill the form with the detected settings and show sample proxies
+
+```bash
+# API endpoint for AI proxy source analysis
+curl -X POST http://localhost:8000/api/v1/ai/suggest-proxy-source \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/proxies.txt"}'
+```
+
+### Celery tasks
+
+| Task | Queue | Description |
+|------|-------|-------------|
+| `pilgrim.proxy.fetch_proxy_source` | `maintenance` | Fetch and parse proxies from a source URL |
+| `pilgrim.proxy.validate_proxies` | `maintenance` | Test proxy connectivity against validation URLs |
+| `pilgrim.proxy.expire_proxies` | `maintenance` | Remove expired proxies (runs hourly via beat) |
 
 ## 📧 Email Notifications
 

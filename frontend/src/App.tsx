@@ -15,6 +15,7 @@ import JobDetail from './pages/Jobs/JobDetail';
 import ProxySources from './pages/ProxySources/ProxySources';
 import ProxySourceCreate from './pages/ProxySources/ProxySourceCreate';
 import ProxySourceDetail from './pages/ProxySources/ProxySourceDetail';
+import ProxySourceEdit from './pages/ProxySources/ProxySourceEdit';
 import Proxies from './pages/Proxies/Proxies';
 import Settings from './pages/Settings/Settings';
 import './App.css';
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="proxy-sources" element={<ProxySources />} />
         <Route path="proxy-sources/new" element={<ProxySourceCreate />} />
         <Route path="proxy-sources/:id" element={<ProxySourceDetail />} />
+        <Route path="proxy-sources/:id/edit" element={<ProxySourceEdit />} />
         <Route path="proxies" element={<Proxies />} />
         <Route path="settings" element={<Settings />} />
       </Route>

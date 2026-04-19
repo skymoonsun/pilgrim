@@ -150,6 +150,101 @@ class FieldVerificationResult(BaseModel):
     )
 
 
+# ── Proxy source suggestion schemas ──────────────────────────────
+
+
+class ProxySourceSuggestionRequest(BaseModel):
+    """Request body for AI-powered proxy source analysis."""
+
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Proxy list source URL to analyze",
+    )
+
+
+class ProxySourceVerifyRequest(BaseModel):
+    """Request body for verifying proxy source parsing configuration."""
+
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Proxy list source URL to test",
+    )
+    format_type: str = Field(
+        ...,
+        description="Format type: raw_text, json, csv, xml",
+    )
+    extraction_spec: dict | None = Field(
+        None,
+        description="Extraction spec for non-raw_text formats",
+    )
+
+
+class ProxySourceVerifyResult(BaseModel):
+    """Result of verifying a proxy source configuration."""
+
+    success: bool = Field(
+        ..., description="Whether proxies were successfully parsed"
+    )
+    total_parsed: int = Field(
+        ..., description="Total number of proxies parsed"
+    )
+    sample_proxies: list[dict] = Field(
+        default_factory=list,
+        description="Sample parsed proxies (up to 10)",
+    )
+    format_type: str = Field(
+        ..., description="Format type used for parsing"
+    )
+    content_length: int = Field(
+        ..., description="Fetched content length in characters"
+    )
+    error: str | None = Field(
+        None, description="Error message if parsing failed"
+    )
+
+
+class ProxySourceSuggestionSchema(BaseModel):
+    """LLM structured output schema for proxy source suggestions."""
+
+    format_type: str = Field(
+        ...,
+        description="One of: raw_text, json, csv, xml",
+    )
+    extraction_spec: dict | None = Field(
+        None,
+        description="Extraction spec for non-raw_text formats",
+    )
+    suggested_name: str = Field(
+        ...,
+        description="Short descriptive name for this source",
+    )
+    description: str = Field(
+        ...,
+        description="Brief description of what this source provides",
+    )
+
+
+class ProxySourceSuggestionResponse(BaseModel):
+    """Response from the AI proxy source suggestion endpoint."""
+
+    format_type: str = Field(..., description="Detected format type")
+    extraction_spec: dict | None = Field(
+        None, description="Suggested extraction spec (null for raw_text)"
+    )
+    suggested_name: str = Field(..., description="Suggested source name")
+    description: str = Field(..., description="Source description")
+    sample_proxies: list[dict] = Field(
+        default_factory=list,
+        description="Sample proxies parsed from the content",
+    )
+    model_used: str = Field(..., description="LLM model used (or 'heuristic' for raw_text)")
+    content_length: int = Field(..., description="Fetched content length in characters")
+
+
 class SpecVerificationResponse(BaseModel):
     """Response from the spec verification endpoint."""
 

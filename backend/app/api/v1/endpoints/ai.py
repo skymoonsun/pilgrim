@@ -7,6 +7,10 @@ from app.schemas.ai import (
     AIStatusResponse,
     ExtractionSpecAIRequest,
     ExtractionSpecAIResponse,
+    ProxySourceSuggestionRequest,
+    ProxySourceSuggestionResponse,
+    ProxySourceVerifyRequest,
+    ProxySourceVerifyResult,
     SpecVerificationResponse,
     VerifySpecRequest,
 )
@@ -76,3 +80,41 @@ async def ai_status() -> AIStatusResponse:
     """Check whether AI features are enabled and the provider is reachable."""
     service = AIService()
     return await service.check_status()
+
+
+@router.post(
+    "/suggest-proxy-source",
+    response_model=ProxySourceSuggestionResponse,
+)
+async def suggest_proxy_source(
+    body: ProxySourceSuggestionRequest,
+) -> ProxySourceSuggestionResponse:
+    """Analyze a proxy source URL and suggest configuration.
+
+    Fetches the source content, detects format (raw_text, json, csv, xml),
+    and suggests extraction_spec, name, and description.  For raw_text
+    format, skips the LLM call and returns heuristic results.
+    """
+    service = AIService()
+    return await service.suggest_proxy_source(url=body.url)
+
+
+@router.post(
+    "/verify-proxy-source",
+    response_model=ProxySourceVerifyResult,
+)
+async def verify_proxy_source(
+    body: ProxySourceVerifyRequest,
+) -> ProxySourceVerifyResult:
+    """Verify a proxy source configuration by fetching and parsing it.
+
+    Fetches the source content, parses it using the given format_type
+    and extraction_spec, and returns sample proxies.
+    Does not require AI — this is a pure parsing verification.
+    """
+    service = AIService()
+    return await service.verify_proxy_source(
+        url=body.url,
+        format_type=body.format_type,
+        extraction_spec=body.extraction_spec,
+    )

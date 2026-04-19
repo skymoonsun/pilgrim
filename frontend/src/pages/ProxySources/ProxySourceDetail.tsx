@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { proxySourceApi, proxyApi } from '../../api/client';
 import type { ProxySourceConfig, ValidProxy } from '../../api/client';
 import { IconRefresh, IconTrash } from '../../components/icons/Icons';
+import { IconEdit } from '../../components/icons/Icons';
 
 export default function ProxySourceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -85,6 +86,9 @@ export default function ProxySourceDetail() {
           <p className="page-subtitle">{source.description || 'No description'}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link to={`/proxy-sources/${id}/edit`} className="btn btn-secondary">
+            <IconEdit size={16} /> Edit
+          </Link>
           <button className="btn btn-secondary" onClick={handleFetch} disabled={fetching}>
             <IconRefresh size={16} /> {fetching ? 'Fetching...' : 'Fetch Now'}
           </button>
