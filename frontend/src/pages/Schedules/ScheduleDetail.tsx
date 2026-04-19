@@ -4,7 +4,7 @@ import { schedulesApi } from '../../api/client';
 import type { Schedule, CallbackLog, EmailNotificationLog } from '../../api/client';
 import {
   IconCalendar, IconClock, IconPlay, IconTrash, IconPause,
-  IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit, IconMail,
+  IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit, IconMail, IconGlobe,
 } from '../../components/icons/Icons';
 
 export default function ScheduleDetail() {
@@ -46,7 +46,11 @@ export default function ScheduleDetail() {
     if (!schedule || !confirm('Trigger this schedule now?')) return;
     try {
       const res = await schedulesApi.trigger(schedule.id);
-      alert(`${res.jobs_created} jobs created!`);
+      if (res.schedule_type === 'proxy_source') {
+        alert(`${res.fetches_triggered} proxy source fetches triggered!`);
+      } else {
+        alert(`${res.jobs_created} jobs created!`);
+      }
       loadSchedule(schedule.id);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Trigger failed');
@@ -247,9 +251,27 @@ export default function ScheduleDetail() {
         </div>
       </div>
 
-      {/* ── Config Links with URLs ── */}
+      {/* ── Config Links with URLs / Proxy Source Links ── */}
       <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {schedule.config_links.map((link) => (
+        {schedule.schedule_type === 'proxy_source' && schedule.proxy_source_links.map((link) => (
+          <div key={link.id} className="card" style={{
+            padding: 28,
+            border: '1px solid var(--accent-cyan)',
+            boxShadow: '0 0 12px rgba(0,240,255,0.04)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h3 className="card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <IconGlobe size={16} />
+                <Link to={`/proxy-sources/${link.proxy_source_id}`}
+                  style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>
+                  {link.proxy_source_name || link.proxy_source_id.slice(0, 8)}
+                </Link>
+              </h3>
+            </div>
+          </div>
+        ))}
+
+        {schedule.schedule_type === 'crawl' && schedule.config_links.map((link) => (
           <div key={link.id} className="card" style={{
             padding: 28,
             border: '1px solid var(--accent-cyan)',

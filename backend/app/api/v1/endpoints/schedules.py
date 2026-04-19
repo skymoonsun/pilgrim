@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_async_session
+from app.models.enums import ScheduleType
 from app.schemas.schedule import (
     CallbackConfigCreate,
     CallbackConfigResponse,
@@ -16,6 +17,7 @@ from app.schemas.schedule import (
     ScheduleConfigLinkResponse,
     ScheduleCreate,
     ScheduleListResponse,
+    ScheduleProxySourceLinkResponse,
     ScheduleResponse,
     ScheduleUpdate,
     ScheduleUrlCreate,
@@ -99,10 +101,38 @@ async def trigger_schedule(
     schedule_id: UUID = Path(...),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict:
-    """Manually trigger — creates jobs for each config's URL targets."""
+    """Manually trigger — creates jobs for crawl schedules or enqueues
+    fetch+validate tasks for proxy_source schedules."""
     from app.workers.tasks.scrape import run_crawl_job
+    from app.workers.tasks.proxy import fetch_proxy_source, validate_proxies
 
     service = ScheduleService(session)
+    schedule = await service.get_by_id(schedule_id)
+
+    if schedule.schedule_type == ScheduleType.PROXY_SOURCE:
+        # Enqueue fetch + validate for each linked proxy source
+        fetches_triggered = 0
+        for link in schedule.proxy_source_links:
+            fetch_proxy_source.apply_async(
+                args=[str(link.proxy_source_id)],
+                queue="maintenance",
+            )
+            validate_proxies.apply_async(
+                args=[str(link.proxy_source_id)],
+                queue="maintenance",
+            )
+            fetches_triggered += 1
+
+        # Update tracking
+        jobs = await service.trigger(schedule_id)
+
+        return {
+            "schedule_id": str(schedule_id),
+            "fetches_triggered": fetches_triggered,
+            "schedule_type": "proxy_source",
+        }
+
+    # Crawl schedule
     jobs = await service.trigger(schedule_id)
 
     # Enqueue each job to Celery
@@ -116,6 +146,7 @@ async def trigger_schedule(
         "schedule_id": str(schedule_id),
         "jobs_created": len(jobs),
         "job_ids": [str(j.id) for j in jobs],
+        "schedule_type": "crawl",
     }
 
 
@@ -252,7 +283,7 @@ async def get_email_notification_logs(
 
 
 def _to_response(schedule) -> ScheduleResponse:
-    """Build ScheduleResponse with nested config links and their URLs."""
+    """Build ScheduleResponse with nested config links, proxy source links, and URLs."""
     config_links = []
     for link in schedule.config_links:
         config_links.append(
@@ -268,11 +299,23 @@ def _to_response(schedule) -> ScheduleResponse:
             )
         )
 
+    proxy_source_links = []
+    for link in schedule.proxy_source_links:
+        proxy_source_links.append(
+            ScheduleProxySourceLinkResponse(
+                id=link.id,
+                proxy_source_id=link.proxy_source_id,
+                proxy_source_name=link.proxy_source.name if link.proxy_source else None,
+                priority=link.priority,
+            )
+        )
+
     return ScheduleResponse(
         id=schedule.id,
         name=schedule.name,
         description=schedule.description,
         is_active=schedule.is_active,
+        schedule_type=schedule.schedule_type.value,
         timezone=schedule.timezone,
         cron_expression=schedule.cron_expression,
         interval_seconds=schedule.interval_seconds,
@@ -283,6 +326,7 @@ def _to_response(schedule) -> ScheduleResponse:
         created_at=schedule.created_at,
         updated_at=schedule.updated_at,
         config_links=config_links,
+        proxy_source_links=proxy_source_links,
         callback=(
             CallbackConfigResponse.model_validate(schedule.callback)
             if schedule.callback

@@ -9,14 +9,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import ConfigNotFoundError, ScheduleNotFoundError
+from app.core.exceptions import ConfigNotFoundError, ScheduleNotFoundError, ProxySourceNotFoundError
 from app.models.callback_config import CallbackConfig
 from app.models.crawl_config import CrawlConfiguration
 from app.models.crawl_job import CrawlJob
 from app.models.crawl_schedule import CrawlSchedule
 from app.models.email_notification_config import EmailNotificationConfig
-from app.models.enums import CallbackMethod, CrawlJobStatus
+from app.models.enums import CallbackMethod, CrawlJobStatus, ScheduleType
+from app.models.proxy_source_config import ProxySourceConfig
 from app.models.schedule_config_link import ScheduleConfigLink
+from app.models.schedule_proxy_source_link import ScheduleProxySourceLink
 from app.models.schedule_url_target import ScheduleUrlTarget
 from app.schemas.schedule import (
     CallbackConfigCreate,
@@ -43,6 +45,8 @@ class ScheduleService:
             .selectinload(ScheduleConfigLink.config),
             selectinload(CrawlSchedule.config_links)
             .selectinload(ScheduleConfigLink.url_targets),
+            selectinload(CrawlSchedule.proxy_source_links)
+            .selectinload(ScheduleProxySourceLink.proxy_source),
             selectinload(CrawlSchedule.callback),
             selectinload(CrawlSchedule.email_notification),
         )
@@ -77,6 +81,7 @@ class ScheduleService:
     # ── Create ───────────────────────────────────────────────────
 
     async def create(self, data: ScheduleCreate) -> CrawlSchedule:
+        schedule_type = ScheduleType(data.schedule_type)
         schedule = CrawlSchedule(
             name=data.name,
             description=data.description,
@@ -84,6 +89,7 @@ class ScheduleService:
             cron_expression=data.cron_expression,
             interval_seconds=data.interval_seconds,
             default_queue=data.default_queue,
+            schedule_type=schedule_type,
             is_active=True,
         )
 
@@ -95,27 +101,41 @@ class ScheduleService:
         self.session.add(schedule)
         await self.session.flush()  # get schedule.id
 
-        # Create config links with their URL targets
-        for i, cl in enumerate(data.config_links):
-            config_id = UUID(cl.config_id)
-            await self._validate_config(config_id)
+        if schedule_type == ScheduleType.CRAWL:
+            # Create config links with their URL targets
+            for i, cl in enumerate(data.config_links):
+                config_id = UUID(cl.config_id)
+                await self._validate_config(config_id)
 
-            link = ScheduleConfigLink(
-                schedule_id=schedule.id,
-                config_id=config_id,
-                priority=i,
-            )
-            self.session.add(link)
-            await self.session.flush()  # get link.id
-
-            for url_data in cl.urls:
-                target = ScheduleUrlTarget(
-                    config_link_id=link.id,
-                    url=url_data.url,
-                    label=url_data.label,
-                    is_active=url_data.is_active,
+                link = ScheduleConfigLink(
+                    schedule_id=schedule.id,
+                    config_id=config_id,
+                    priority=i,
                 )
-                self.session.add(target)
+                self.session.add(link)
+                await self.session.flush()  # get link.id
+
+                for url_data in cl.urls:
+                    target = ScheduleUrlTarget(
+                        config_link_id=link.id,
+                        url=url_data.url,
+                        label=url_data.label,
+                        is_active=url_data.is_active,
+                    )
+                    self.session.add(target)
+
+        elif schedule_type == ScheduleType.PROXY_SOURCE:
+            # Create proxy source links
+            for i, ps in enumerate(data.proxy_source_links):
+                source_id = UUID(ps.proxy_source_id)
+                await self._validate_proxy_source(source_id)
+
+                link = ScheduleProxySourceLink(
+                    schedule_id=schedule.id,
+                    proxy_source_id=source_id,
+                    priority=i,
+                )
+                self.session.add(link)
 
         # Callback config
         if data.callback:
@@ -242,8 +262,18 @@ class ScheduleService:
     # ── Trigger (manual or by beat) ──────────────────────────────
 
     async def trigger(self, schedule_id: UUID) -> list[CrawlJob]:
-        """Create CrawlJobs for every (config_link → urls) pair."""
+        """Create CrawlJobs for every (config_link → urls) pair, or
+        return an empty list for proxy_source schedules (tasks are
+        enqueued directly by the caller)."""
         schedule = await self.get_by_id(schedule_id)
+
+        if schedule.schedule_type == ScheduleType.PROXY_SOURCE:
+            return await self._trigger_proxy_source(schedule)
+
+        return await self._trigger_crawl(schedule)
+
+    async def _trigger_crawl(self, schedule: CrawlSchedule) -> list[CrawlJob]:
+        """Create CrawlJobs for every (config_link → urls) pair."""
         jobs: list[CrawlJob] = []
 
         for link in schedule.config_links:
@@ -264,7 +294,7 @@ class ScheduleService:
         if not jobs:
             logger.warning(
                 "Schedule %s has no active config/URL pairs — skipping",
-                schedule_id,
+                schedule.id,
             )
             return jobs
 
@@ -283,9 +313,31 @@ class ScheduleService:
             await self.session.refresh(job)
 
         logger.info(
-            "Schedule %s triggered: %d jobs created", schedule_id, len(jobs)
+            "Schedule %s triggered: %d jobs created", schedule.id, len(jobs)
         )
         return jobs
+
+    async def _trigger_proxy_source(self, schedule: CrawlSchedule) -> list[CrawlJob]:
+        """Update tracking for proxy_source schedule.
+
+        Returns empty list — the caller (beat task or API endpoint) is
+        responsible for enqueuing fetch + validate tasks."""
+        now = datetime.now(timezone.utc)
+        schedule.last_run_at = now
+        schedule.run_count += 1
+        schedule.next_run_at = self._compute_next_run(
+            schedule.cron_expression,
+            schedule.interval_seconds,
+            schedule.timezone,
+        )
+        await self.session.commit()
+
+        logger.info(
+            "Proxy source schedule %s triggered: %d sources",
+            schedule.id,
+            len(schedule.proxy_source_links),
+        )
+        return []
 
     # ── Helpers ──────────────────────────────────────────────────
 
@@ -297,6 +349,15 @@ class ScheduleService:
         )
         if result.scalar_one_or_none() is None:
             raise ConfigNotFoundError(str(config_id))
+
+    async def _validate_proxy_source(self, source_id: UUID) -> None:
+        result = await self.session.execute(
+            select(ProxySourceConfig.id).where(
+                ProxySourceConfig.id == source_id
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ProxySourceNotFoundError(str(source_id))
 
     @staticmethod
     def _build_callback(

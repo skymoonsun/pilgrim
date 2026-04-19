@@ -73,6 +73,15 @@ export interface ReadinessResponse {
 
 // ── Schedule types ───────────────────────────────────────
 
+export type ScheduleType = 'crawl' | 'proxy_source';
+
+export interface ScheduleProxySourceLink {
+  id: string;
+  proxy_source_id: string;
+  proxy_source_name: string | null;
+  priority: number;
+}
+
 export interface ScheduleUrlTarget {
   id: string;
   url: string;
@@ -160,6 +169,7 @@ export interface Schedule {
   name: string;
   description: string | null;
   is_active: boolean;
+  schedule_type: ScheduleType;
   timezone: string;
   cron_expression: string | null;
   interval_seconds: number | null;
@@ -170,6 +180,7 @@ export interface Schedule {
   created_at: string;
   updated_at: string;
   config_links: ScheduleConfigLink[];
+  proxy_source_links: ScheduleProxySourceLink[];
   callback: CallbackConfig | null;
   email_notification: EmailNotificationConfig | null;
 }
@@ -191,7 +202,9 @@ export interface ScheduleCreateData {
   cron_expression?: string | null;
   interval_seconds?: number | null;
   default_queue?: string;
+  schedule_type?: ScheduleType;
   config_links?: ConfigLinkUrlsCreate[];
+  proxy_source_links?: { proxy_source_id: string }[];
   callback?: {
     url: string;
     method?: string;
@@ -217,6 +230,8 @@ export interface TriggerResponse {
   schedule_id: string;
   jobs_created: number;
   job_ids: string[];
+  schedule_type: ScheduleType;
+  fetches_triggered?: number;
 }
 
 // ── AI types ──────────────────────────────────────────────
@@ -433,6 +448,8 @@ export interface ProxySourceSuggestionResponse {
   suggested_name: string;
   description: string;
   sample_proxies: { ip: string; port: number; protocol: string }[];
+  total_detected: number;
+  suggested_max_proxies: number | null;
   model_used: string;
   content_length: number;
 }
@@ -449,6 +466,7 @@ export interface ProxySourceVerifyResult {
   sample_proxies: { ip: string; port: number; protocol: string }[];
   format_type: string;
   content_length: number;
+  suggested_max_proxies: number | null;
   error: string | null;
 }
 
@@ -496,6 +514,7 @@ export interface ProxySourceConfig {
   validation_timeout: number;
   fetch_interval_seconds: number;
   proxy_ttl_seconds: number;
+  max_proxies: number | null;
   last_fetched_at: string | null;
   last_fetch_error: string | null;
   created_at: string;
@@ -519,6 +538,7 @@ export interface ProxySourceCreateData {
   validation_timeout?: number;
   fetch_interval_seconds?: number;
   proxy_ttl_seconds?: number;
+  max_proxies?: number | null;
   is_active?: boolean;
 }
 

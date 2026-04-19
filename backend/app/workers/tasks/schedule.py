@@ -1,8 +1,8 @@
 """Schedule polling task — checks for due schedules and triggers them.
 
 Runs every 30 seconds via Celery Beat.  For each schedule whose
-``next_run_at`` is in the past, it creates CrawlJob rows for every
-(config, url) permutation and enqueues them to workers.
+``next_run_at`` is in the past, it creates CrawlJob rows for crawl
+schedules or enqueues fetch+validate tasks for proxy_source schedules.
 """
 
 from __future__ import annotations
@@ -32,7 +32,9 @@ async def _check_schedules() -> dict[str, int]:
 
     from app.core.config import get_settings
     from app.models.crawl_schedule import CrawlSchedule
+    from app.models.enums import ScheduleType
     from app.models.schedule_config_link import ScheduleConfigLink
+    from app.models.schedule_proxy_source_link import ScheduleProxySourceLink
     from app.services.schedule_service import ScheduleService
 
     settings = get_settings()
@@ -55,6 +57,9 @@ async def _check_schedules() -> dict[str, int]:
                     selectinload(CrawlSchedule.config_links).selectinload(
                         ScheduleConfigLink.url_targets
                     ),
+                    selectinload(CrawlSchedule.proxy_source_links).selectinload(
+                        ScheduleProxySourceLink.proxy_source
+                    ),
                     selectinload(CrawlSchedule.callback),
                 )
                 .where(
@@ -73,21 +78,45 @@ async def _check_schedules() -> dict[str, int]:
 
             for schedule in schedules:
                 try:
-                    jobs = await service.trigger(schedule.id)
-                    if jobs:
-                        # Enqueue each job to Celery
-                        from app.workers.tasks.scrape import run_crawl_job
+                    if schedule.schedule_type == ScheduleType.PROXY_SOURCE:
+                        # Enqueue fetch + validate for each linked proxy source
+                        from app.workers.tasks.proxy import fetch_proxy_source, validate_proxies
 
-                        for job in jobs:
-                            run_crawl_job.apply_async(
-                                args=[str(job.id)],
-                                queue=job.queue,
+                        for link in schedule.proxy_source_links:
+                            fetch_proxy_source.apply_async(
+                                args=[str(link.proxy_source_id)],
+                                queue="maintenance",
                             )
+                            validate_proxies.apply_async(
+                                args=[str(link.proxy_source_id)],
+                                queue="maintenance",
+                            )
+
+                        # Update tracking
+                        await service.trigger(schedule.id)
                         triggered += 1
                         logger.info(
-                            "Schedule '%s' triggered: %d jobs",
-                            schedule.name, len(jobs),
+                            "Proxy source schedule '%s' triggered: %d sources",
+                            schedule.name,
+                            len(schedule.proxy_source_links),
                         )
+                    else:
+                        # Crawl schedule
+                        jobs = await service.trigger(schedule.id)
+                        if jobs:
+                            # Enqueue each job to Celery
+                            from app.workers.tasks.scrape import run_crawl_job
+
+                            for job in jobs:
+                                run_crawl_job.apply_async(
+                                    args=[str(job.id)],
+                                    queue=job.queue,
+                                )
+                            triggered += 1
+                            logger.info(
+                                "Schedule '%s' triggered: %d jobs",
+                                schedule.name, len(jobs),
+                            )
                 except Exception:
                     logger.exception(
                         "Failed to trigger schedule '%s'", schedule.name

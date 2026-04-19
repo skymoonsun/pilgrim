@@ -18,6 +18,7 @@ export default function ProxySourceCreate() {
     validation_timeout: 10,
     fetch_interval_seconds: 3600,
     proxy_ttl_seconds: 86400,
+    max_proxies: '' as string,
     is_active: true,
   });
 
@@ -129,6 +130,7 @@ export default function ProxySourceCreate() {
         validation_timeout: form.validation_timeout,
         fetch_interval_seconds: form.fetch_interval_seconds,
         proxy_ttl_seconds: form.proxy_ttl_seconds,
+        max_proxies: form.max_proxies ? parseInt(form.max_proxies) : null,
         is_active: form.is_active,
       };
 
@@ -223,6 +225,26 @@ export default function ProxySourceCreate() {
                     {' '}via <span style={{ fontFamily: 'var(--font-mono)' }}>{aiResult.model_used}</span>
                     {' '}({aiResult.content_length} chars)
                   </div>
+
+                  {aiResult.total_detected > 0 && (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Total proxies detected: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{aiResult.total_detected}</span>
+                      {aiResult.suggested_max_proxies && (
+                        <>
+                          <span style={{ color: 'var(--text-muted)' }}>|</span>
+                          <span>Suggested limit: <span style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{aiResult.suggested_max_proxies}</span></span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                            onClick={() => setForm({ ...form, max_proxies: String(aiResult.suggested_max_proxies) })}
+                          >
+                            Apply
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {aiResult.sample_proxies.length > 0 && (
                     <div style={{ marginTop: 8 }}>
@@ -382,6 +404,19 @@ export default function ProxySourceCreate() {
                     ) : (
                       <span style={{ color: 'var(--status-failed)' }}>Parsing failed</span>
                     )}
+                    {verifyResult.suggested_max_proxies && (
+                      <span style={{ marginLeft: 12, fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        Suggested limit: <span style={{ color: 'var(--accent-cyan)', fontWeight: 600 }}>{verifyResult.suggested_max_proxies}</span>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: '0.7rem', padding: '1px 6px', marginLeft: 4 }}
+                          onClick={() => setForm({ ...form, max_proxies: String(verifyResult.suggested_max_proxies) })}
+                        >
+                          Apply
+                        </button>
+                      </span>
+                    )}
                   </div>
 
                   {verifyResult.error && (
@@ -440,7 +475,7 @@ export default function ProxySourceCreate() {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
             <div className="form-group">
               <label className="form-label">Validation Timeout (s)</label>
               <input
@@ -472,6 +507,19 @@ export default function ProxySourceCreate() {
                 value={form.proxy_ttl_seconds}
                 onChange={(e) => setForm({ ...form, proxy_ttl_seconds: Number(e.target.value) })}
                 min={60}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Max Proxies</label>
+              <input
+                className="form-input"
+                type="number"
+                value={form.max_proxies}
+                onChange={(e) => setForm({ ...form, max_proxies: e.target.value })}
+                placeholder="Unlimited"
+                min={1}
+                max={100000}
               />
             </div>
           </div>

@@ -118,12 +118,16 @@ export default function Schedules() {
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                         {schedule.name}
                       </div>
-                      {schedule.description && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                          {schedule.description.slice(0, 60)}
-                          {schedule.description.length > 60 ? '…' : ''}
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                        <span className={`badge ${schedule.schedule_type === 'proxy_source' ? 'badge--running' : 'badge--queued'}`}>
+                          {schedule.schedule_type === 'proxy_source' ? 'Proxy Source' : 'Crawl'}
+                        </span>
+                        {schedule.description && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                            {schedule.description.slice(0, 40)}{schedule.description.length > 40 ? '…' : ''}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
@@ -132,11 +136,17 @@ export default function Schedules() {
                       </span>
                     </td>
                     <td>
-                      <span className="badge badge--queued">{schedule.config_links.length}</span>
+                      <span className="badge badge--queued">
+                        {schedule.schedule_type === 'proxy_source'
+                          ? schedule.proxy_source_links?.length ?? 0
+                          : schedule.config_links.length}
+                      </span>
                     </td>
                     <td>
                       <span className="badge badge--queued">
-                        {schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0)}
+                        {schedule.schedule_type === 'proxy_source'
+                          ? '—'
+                          : schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0)}
                       </span>
                     </td>
                     <td>

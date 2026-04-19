@@ -64,3 +64,10 @@ class ProxyHealthStatus(str, Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
+
+
+class ScheduleType(str, Enum):
+    """Type of schedule — determines what gets triggered."""
+
+    CRAWL = "crawl"
+    PROXY_SOURCE = "proxy_source"

@@ -7,6 +7,7 @@ from app.models.enums import (
     ProxyFormatType,
     ProxyHealthStatus,
     ProxyProtocol,
+    ScheduleType,
     ScraperProfile,
     ScheduleStatus,
 )
@@ -16,6 +17,7 @@ from app.models.crawl_job_result import CrawlJobResult
 from app.models.crawl_schedule import CrawlSchedule
 from app.models.schedule_config_link import ScheduleConfigLink
 from app.models.schedule_url_target import ScheduleUrlTarget
+from app.models.schedule_proxy_source_link import ScheduleProxySourceLink
 from app.models.callback_config import CallbackConfig
 from app.models.callback_log import CallbackLog
 from app.models.email_notification_config import EmailNotificationConfig
@@ -30,6 +32,7 @@ __all__ = [
     "UUIDMixin",
     "ScraperProfile",
     "CrawlJobStatus",
+    "ScheduleType",
     "ScheduleStatus",
     "CallbackMethod",
     "ProxyFormatType",
@@ -41,6 +44,7 @@ __all__ = [
     "CrawlSchedule",
     "ScheduleConfigLink",
     "ScheduleUrlTarget",
+    "ScheduleProxySourceLink",
     "CallbackConfig",
     "CallbackLog",
     "EmailNotificationConfig",

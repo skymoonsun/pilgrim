@@ -101,7 +101,7 @@ export default function ProxySourceDetail() {
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 24 }}>
           <div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Source URL</div>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>
@@ -134,6 +134,12 @@ export default function ProxySourceDetail() {
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Proxy TTL</div>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
               {Math.floor(source.proxy_ttl_seconds / 3600)}h
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Max Proxies</div>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+              {source.max_proxies != null ? source.max_proxies : 'Unlimited'}
             </div>
           </div>
         </div>

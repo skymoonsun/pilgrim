@@ -31,11 +31,14 @@ export function useInfiniteScroll<T>({
   const [loadingMore, setLoadingMore] = useState(false);
   const skipRef = useRef(0);
   const hasMoreRef = useRef(true);
+  const loadingRef = useRef(true);
   const sentinelNodeRef = useRef<HTMLElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const loadInitial = useCallback(async () => {
+    loadingRef.current = true;
     setLoading(true);
+    setItems([]);
     skipRef.current = 0;
     hasMoreRef.current = true;
     try {
@@ -47,12 +50,13 @@ export function useInfiniteScroll<T>({
     } catch (err) {
       console.error('Failed to load:', err);
     }
+    loadingRef.current = false;
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSize, ...deps]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMoreRef.current) return;
+    if (loadingMore || !hasMoreRef.current || loadingRef.current) return;
     setLoadingMore(true);
     try {
       const res = await fetchPage(skipRef.current, pageSize);

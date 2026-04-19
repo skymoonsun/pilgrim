@@ -2,19 +2,24 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.models.enums import ScheduleType
 
 
 class CrawlSchedule(Base, UUIDMixin, TimestampMixin):
-    """Schedule definition for recurring crawl jobs.
+    """Schedule definition for recurring crawl jobs or proxy source fetches.
 
     A schedule can be linked to **multiple CrawlConfigurations** (via
     ``ScheduleConfigLink``) and **multiple target URLs** (via
     ``ScheduleUrlTarget``).  When triggered, every (config, url) pair
     produces a separate ``CrawlJob``.
+
+    For ``proxy_source`` schedules, it links to ProxySourceConfig via
+    ``ScheduleProxySourceLink``.  On trigger, each linked proxy source
+    is fetched and validated.
 
     Exactly one of ``cron_expression`` or ``interval_seconds`` should be
     set.  Enforcement is done at the application / schema level.
@@ -29,6 +34,14 @@ class CrawlSchedule(Base, UUIDMixin, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, index=True,
+    )
+
+    # ── Schedule type ────────────────────────────────────────────
+    schedule_type: Mapped[ScheduleType] = mapped_column(
+        SQLEnum(ScheduleType, name="schedule_type_enum"),
+        nullable=False,
+        default=ScheduleType.CRAWL,
+        server_default="crawl",
     )
 
     # ── Schedule definition ──────────────────────────────────────
@@ -64,6 +77,12 @@ class CrawlSchedule(Base, UUIDMixin, TimestampMixin):
         back_populates="schedule",
         cascade="all, delete-orphan",
         order_by="ScheduleConfigLink.priority",
+    )
+    proxy_source_links: Mapped[list["ScheduleProxySourceLink"]] = relationship(
+        "ScheduleProxySourceLink",
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        order_by="ScheduleProxySourceLink.priority",
     )
     callback: Mapped["CallbackConfig | None"] = relationship(
         "CallbackConfig",

@@ -60,6 +60,7 @@ async def _fetch_proxy_source(source_id: str) -> dict[str, str]:
             source_headers = config.source_headers or {}
             format_type = config.format_type
             extraction_spec = config.extraction_spec
+            max_proxies = config.max_proxies
 
             # Fetch the proxy list
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -89,6 +90,14 @@ async def _fetch_proxy_source(source_id: str) -> dict[str, str]:
                 config.last_fetched_at = datetime.now(timezone.utc)
                 await session.commit()
                 return {"status": "warning", "message": "No proxies found"}
+
+            # Truncate if max_proxies is set
+            if max_proxies is not None and len(parsed) > max_proxies:
+                logger.info(
+                    "Truncating proxies from %d to %d (max_proxies=%d) for source '%s'",
+                    len(parsed), max_proxies, max_proxies, source_name,
+                )
+                parsed = parsed[:max_proxies]
 
             # Upsert parsed proxies directly
             from app.models.enums import ProxyHealthStatus, ProxyProtocol

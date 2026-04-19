@@ -202,6 +202,9 @@ class ProxySourceVerifyResult(BaseModel):
     content_length: int = Field(
         ..., description="Fetched content length in characters"
     )
+    suggested_max_proxies: int | None = Field(
+        None, description="Suggested max_proxies value if total > 500"
+    )
     error: str | None = Field(
         None, description="Error message if parsing failed"
     )
@@ -240,6 +243,12 @@ class ProxySourceSuggestionResponse(BaseModel):
     sample_proxies: list[dict] = Field(
         default_factory=list,
         description="Sample proxies parsed from the content",
+    )
+    total_detected: int = Field(
+        default=0, description="Total number of proxies detected in full content"
+    )
+    suggested_max_proxies: int | None = Field(
+        None, description="Suggested max_proxies value if total > 500"
     )
     model_used: str = Field(..., description="LLM model used (or 'heuristic' for raw_text)")
     content_length: int = Field(..., description="Fetched content length in characters")

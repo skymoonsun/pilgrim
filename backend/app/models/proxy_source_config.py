@@ -53,6 +53,9 @@ class ProxySourceConfig(Base, UUIDMixin, TimestampMixin):
     proxy_ttl_seconds: Mapped[int] = mapped_column(
         Integer, default=86400
     )
+    max_proxies: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
     # ── Status ────────────────────────────────────────────────
     last_fetched_at: Mapped[datetime | None] = mapped_column(

@@ -164,12 +164,16 @@ class AIService:
         sample = content[:3000]
         if self._looks_like_raw_text(sample):
             sample_proxies = self._parse_raw_text_sample(sample)
+            total_detected = self._count_total_proxies(content, "raw_text", None)
+            suggested = 500 if total_detected > 500 else None
             return ProxySourceSuggestionResponse(
                 format_type="raw_text",
                 extraction_spec=None,
                 suggested_name=self._extract_source_name(url),
                 description="Plain text proxy list (ip:port format)",
                 sample_proxies=sample_proxies,
+                total_detected=total_detected,
+                suggested_max_proxies=suggested,
                 model_used="heuristic",
                 content_length=len(content),
             )
@@ -191,12 +195,19 @@ class AIService:
             content, llm_result.format_type, llm_result.extraction_spec
         )
 
+        total_detected = self._count_total_proxies(
+            content, llm_result.format_type, llm_result.extraction_spec
+        )
+        suggested = 500 if total_detected > 500 else None
+
         return ProxySourceSuggestionResponse(
             format_type=llm_result.format_type,
             extraction_spec=llm_result.extraction_spec,
             suggested_name=llm_result.suggested_name,
             description=llm_result.description,
             sample_proxies=sample_proxies,
+            total_detected=total_detected,
+            suggested_max_proxies=suggested,
             model_used=getattr(provider, "_model", "unknown"),
             content_length=len(content),
         )
@@ -268,12 +279,15 @@ class AIService:
             for p in parsed[:10]
         ]
 
+        suggested = 500 if len(parsed) > 500 else None
+
         return ProxySourceVerifyResult(
             success=True,
             total_parsed=len(parsed),
             sample_proxies=sample_proxies,
             format_type=format_type,
             content_length=len(content),
+            suggested_max_proxies=suggested,
         )
 
     # ── Verification API ────────────────────────────────────────────
@@ -839,6 +853,32 @@ class AIService:
             ]
         except Exception:
             return []
+
+    @staticmethod
+    def _count_total_proxies(
+        content: str,
+        format_type: str,
+        extraction_spec: dict | None,
+    ) -> int:
+        """Count total proxies in content without building full ParsedProxy objects."""
+        from app.models.enums import ProxyFormatType
+        from app.services.proxy_parser import parse_proxy_list
+
+        try:
+            fmt = ProxyFormatType(format_type)
+        except ValueError:
+            return 0
+
+        # Use full content for JSON/XML (truncation breaks parsing)
+        count_content = content if fmt in (
+            ProxyFormatType.JSON, ProxyFormatType.XML
+        ) else content[:10000]
+
+        try:
+            parsed = parse_proxy_list(count_content, fmt, extraction_spec)
+            return len(parsed)
+        except Exception:
+            return 0
 
     @staticmethod
     def _extract_source_name(url: str) -> str:

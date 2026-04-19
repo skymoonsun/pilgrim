@@ -139,6 +139,26 @@ class ScheduleConfigLinkResponse(BaseModel):
     url_targets: list[ScheduleUrlResponse] = []
 
 
+# ── Proxy source link ─────────────────────────────────────────────
+
+
+class ProxySourceLinkCreate(BaseModel):
+    """A proxy source ID for schedule creation."""
+
+    proxy_source_id: str = Field(..., description="ProxySourceConfig UUID")
+
+
+class ScheduleProxySourceLinkResponse(BaseModel):
+    """Serialised proxy source link."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    proxy_source_id: UUID
+    proxy_source_name: str | None = None
+    priority: int
+
+
 # ── Email notification config ────────────────────────────────────
 
 
@@ -254,10 +274,22 @@ class ScheduleCreate(BaseModel):
 
     default_queue: str = Field(default="crawl_default", max_length=64)
 
-    # Config links with per-config URLs
+    # Schedule type
+    schedule_type: str = Field(
+        default="crawl",
+        description="Schedule type: 'crawl' or 'proxy_source'",
+    )
+
+    # Config links with per-config URLs (for crawl schedules)
     config_links: list[ConfigLinkUrlsCreate] = Field(
         default_factory=list,
-        description="Config + URL pairs",
+        description="Config + URL pairs (for crawl schedules)",
+    )
+
+    # Proxy source links (for proxy_source schedules)
+    proxy_source_links: list[ProxySourceLinkCreate] = Field(
+        default_factory=list,
+        description="Proxy source IDs (for proxy_source schedules)",
     )
 
     callback: CallbackConfigCreate | None = Field(
@@ -289,6 +321,7 @@ class ScheduleResponse(BaseModel):
     name: str
     description: str | None
     is_active: bool
+    schedule_type: str
     timezone: str
     cron_expression: str | None
     interval_seconds: int | None
@@ -301,6 +334,7 @@ class ScheduleResponse(BaseModel):
 
     # Nested
     config_links: list[ScheduleConfigLinkResponse] = []
+    proxy_source_links: list[ScheduleProxySourceLinkResponse] = []
     callback: CallbackConfigResponse | None = None
     email_notification: EmailNotificationConfigResponse | None = None
 

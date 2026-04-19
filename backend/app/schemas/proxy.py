@@ -52,6 +52,9 @@ class ProxySourceCreate(BaseModel):
     proxy_ttl_seconds: int = Field(
         default=86400, ge=60, description="Proxy expiry after validation in seconds"
     )
+    max_proxies: int | None = Field(
+        None, ge=1, le=100000, description="Max proxies to process (None = unlimited)"
+    )
     is_active: bool = True
 
 
@@ -69,6 +72,7 @@ class ProxySourceUpdate(BaseModel):
     validation_timeout: int | None = Field(None, ge=1, le=120)
     fetch_interval_seconds: int | None = Field(None, ge=60)
     proxy_ttl_seconds: int | None = Field(None, ge=60)
+    max_proxies: int | None = Field(None, ge=1, le=100000)
     is_active: bool | None = None
 
 
@@ -90,6 +94,7 @@ class ProxySourceResponse(BaseModel):
     validation_timeout: int
     fetch_interval_seconds: int
     proxy_ttl_seconds: int
+    max_proxies: int | None
     last_fetched_at: datetime | None
     last_fetch_error: str | None
     created_at: datetime
