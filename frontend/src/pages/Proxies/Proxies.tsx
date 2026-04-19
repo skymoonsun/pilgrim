@@ -251,6 +251,16 @@ export default function Proxies() {
           <button className="btn btn-primary" onClick={openAddModal}>
             <IconPlus size={16} /> Add Proxy
           </button>
+          {total > 0 && (
+            <button
+              className="btn btn-secondary"
+              onClick={handleDeleteAll}
+              disabled={deleting}
+              style={{ borderColor: 'var(--status-failed)', color: 'var(--status-failed)' }}
+            >
+              <IconTrash size={14} /> Delete All{getActiveFilterDescription() ? ` (${getActiveFilterDescription()})` : ''}
+            </button>
+          )}
         </div>
       </div>
 
@@ -397,17 +407,7 @@ export default function Proxies() {
                       <span style={{ color: 'var(--text-muted)' }}>Scroll to load more...</span>
                     )}
                     {!loadingMore && proxies.length >= total && total > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-                        <span>All proxies loaded</span>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={handleDeleteAll}
-                          disabled={deleting}
-                          style={{ fontSize: '0.8rem', borderColor: 'var(--status-failed)', color: 'var(--status-failed)', padding: '4px 12px' }}
-                        >
-                          <IconTrash size={13} /> Delete All{getActiveFilterDescription() ? ` (${getActiveFilterDescription()})` : ''}
-                        </button>
-                      </div>
+                      <span>All proxies loaded</span>
                     )}
                   </td>
                 </tr>
