@@ -136,3 +136,26 @@ class AIVerificationError(AppException):
             f"Spec verification failed: {reason}",
             "AI_VERIFICATION_ERROR",
         )
+
+
+# ── Proxy exceptions ──────────────────────────────────────────────
+
+
+class ProxySourceNotFoundError(AppException):
+    """Raised when a proxy source config is not found."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(
+            f"ProxySourceConfig with ID {source_id} not found",
+            "PROXY_SOURCE_NOT_FOUND",
+        )
+
+
+class ProxyNotFoundError(AppException):
+    """Raised when a valid proxy is not found."""
+
+    def __init__(self, proxy_id: str) -> None:
+        super().__init__(
+            f"ValidProxy with ID {proxy_id} not found",
+            "PROXY_NOT_FOUND",
+        )

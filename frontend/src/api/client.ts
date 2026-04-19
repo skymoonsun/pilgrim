@@ -438,3 +438,128 @@ export const aiApi = {
       body: JSON.stringify(data),
     }),
 };
+
+// ── Proxy Sources ──────────────────────────────────────────
+
+export interface ProxySourceConfig {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  url: string;
+  format_type: string;
+  extraction_spec: Record<string, unknown> | null;
+  source_headers: Record<string, string> | null;
+  validation_urls: Record<string, unknown>;
+  require_all_urls: boolean;
+  validation_timeout: number;
+  fetch_interval_seconds: number;
+  proxy_ttl_seconds: number;
+  last_fetched_at: string | null;
+  last_fetch_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProxySourceListResponse {
+  items: ProxySourceConfig[];
+  total: number;
+}
+
+export interface ProxySourceCreateData {
+  name: string;
+  description?: string | null;
+  url: string;
+  format_type?: string;
+  extraction_spec?: Record<string, unknown> | null;
+  source_headers?: Record<string, string> | null;
+  validation_urls?: Record<string, unknown>;
+  require_all_urls?: boolean;
+  validation_timeout?: number;
+  fetch_interval_seconds?: number;
+  proxy_ttl_seconds?: number;
+  is_active?: boolean;
+}
+
+export interface FetchTriggerResponse {
+  source_id: string;
+  task_id: string;
+  message: string;
+}
+
+export const proxySourceApi = {
+  list: (skip = 0, limit = 50, activeOnly = false) =>
+    request<ProxySourceListResponse>(
+      `/proxy-sources/?skip=${skip}&limit=${limit}&active_only=${activeOnly}`
+    ),
+
+  get: (id: string) => request<ProxySourceConfig>(`/proxy-sources/${id}`),
+
+  create: (data: ProxySourceCreateData) =>
+    request<ProxySourceConfig>('/proxy-sources/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<ProxySourceCreateData>) =>
+    request<ProxySourceConfig>(`/proxy-sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/proxy-sources/${id}`, { method: 'DELETE' }),
+
+  triggerFetch: (id: string) =>
+    request<FetchTriggerResponse>(`/proxy-sources/${id}/fetch`, {
+      method: 'POST',
+    }),
+};
+
+// ── Valid Proxies ──────────────────────────────────────────
+
+export interface ValidProxy {
+  id: string;
+  source_config_id: string;
+  ip: string;
+  port: number;
+  protocol: string;
+  username: string | null;
+  password: string | null;
+  health: string;
+  avg_response_ms: number | null;
+  success_count: number;
+  failure_count: number;
+  last_checked_at: string | null;
+  last_success_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ValidProxyListResponse {
+  items: ValidProxy[];
+  total: number;
+}
+
+export const proxyApi = {
+  list: (params?: { source_id?: string; protocol?: string; health?: string; skip?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.source_id) sp.set('source_id', params.source_id);
+    if (params?.protocol) sp.set('protocol', params.protocol);
+    if (params?.health) sp.set('health', params.health);
+    sp.set('skip', String(params?.skip ?? 0));
+    sp.set('limit', String(params?.limit ?? 50));
+    return request<ValidProxyListResponse>('/proxies/?' + sp.toString());
+  },
+
+  get: (id: string) => request<ValidProxy>('/proxies/' + id),
+
+  delete: (id: string) =>
+    request<void>('/proxies/' + id, { method: 'DELETE' }),
+
+  triggerValidate: (sourceId: string) =>
+    request<{ source_id: string; task_id: string; message: string }>('/proxies/' + sourceId + '/validate', {
+      method: 'POST',
+    }),
+};

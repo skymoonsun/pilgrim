@@ -66,5 +66,5 @@ COPY --from=builder /app /app
 RUN scrapling install || true
 
 CMD ["celery", "-A", "app.workers.celery_app", "worker", \
-     "-Q", "crawl_high,crawl_default,crawl_low", \
+     "-Q", "crawl_high,crawl_default,crawl_low,maintenance", \
      "--concurrency=2", "-l", "info"]

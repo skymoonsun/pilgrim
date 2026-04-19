@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.workers.tasks.schedule",
         "app.workers.tasks.callback",
         "app.workers.tasks.email_notification",
+        "app.workers.tasks.proxy",
     ],
 )
 
@@ -47,6 +48,7 @@ celery_app.conf.update(
         "pilgrim.schedule.*": {"queue": "maintenance"},
         "pilgrim.callback.*": {"queue": "maintenance"},
         "pilgrim.email_notification.*": {"queue": "maintenance"},
+        "pilgrim.proxy.*": {"queue": "maintenance"},
         "pilgrim.maintenance.*": {"queue": "maintenance"},
     },
 
@@ -55,6 +57,10 @@ celery_app.conf.update(
         "check-schedules-every-30s": {
             "task": "pilgrim.schedule.check_schedules",
             "schedule": 30.0,  # seconds
+        },
+        "expire-proxies-every-hour": {
+            "task": "pilgrim.proxy.expire_proxies",
+            "schedule": 3600.0,  # every hour
         },
     },
 )

@@ -38,3 +38,29 @@ class CallbackMethod(str, Enum):
     POST = "POST"
     PUT = "PUT"
     PATCH = "PATCH"
+
+
+class ProxyFormatType(str, Enum):
+    """Format of a proxy list source."""
+
+    RAW_TEXT = "raw_text"
+    JSON = "json"
+    XML = "xml"
+    CSV = "csv"
+
+
+class ProxyProtocol(str, Enum):
+    """Supported proxy protocols."""
+
+    HTTP = "http"
+    HTTPS = "https"
+    SOCKS4 = "socks4"
+    SOCKS5 = "socks5"
+
+
+class ProxyHealthStatus(str, Enum):
+    """Health status of a validated proxy."""
+
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"

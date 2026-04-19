@@ -12,6 +12,10 @@ import ScheduleEdit from './pages/Schedules/ScheduleEdit';
 import ScrapePlayground from './pages/ScrapePlayground/ScrapePlayground';
 import Jobs from './pages/Jobs/Jobs';
 import JobDetail from './pages/Jobs/JobDetail';
+import ProxySources from './pages/ProxySources/ProxySources';
+import ProxySourceCreate from './pages/ProxySources/ProxySourceCreate';
+import ProxySourceDetail from './pages/ProxySources/ProxySourceDetail';
+import Proxies from './pages/Proxies/Proxies';
 import Settings from './pages/Settings/Settings';
 import './App.css';
 
@@ -31,6 +35,10 @@ export default function App() {
         <Route path="scrape" element={<ScrapePlayground />} />
         <Route path="jobs" element={<Jobs />} />
         <Route path="jobs/:id" element={<JobDetail />} />
+        <Route path="proxy-sources" element={<ProxySources />} />
+        <Route path="proxy-sources/new" element={<ProxySourceCreate />} />
+        <Route path="proxy-sources/:id" element={<ProxySourceDetail />} />
+        <Route path="proxies" element={<Proxies />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
