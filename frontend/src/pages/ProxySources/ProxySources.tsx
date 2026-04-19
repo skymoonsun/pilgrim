@@ -1,38 +1,21 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { proxySourceApi } from '../../api/client';
 import type { ProxySourceConfig } from '../../api/client';
 import { IconPlus, IconEye, IconEdit, IconTrash, IconGlobe, IconRefresh } from '../../components/icons/Icons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 export default function ProxySources() {
-  const [sources, setSources] = useState<ProxySourceConfig[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSources();
-  }, []);
-
-  async function loadSources() {
-    setLoading(true);
-    try {
-      const res = await proxySourceApi.list(0, 100);
-      setSources(res.items);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Failed to load proxy sources:', err);
-    }
-    setLoading(false);
-  }
+  const { items: sources, total, loading, loadingMore, sentinelRef, reset } = useInfiniteScroll<ProxySourceConfig>({
+    fetchPage: (skip, limit) => proxySourceApi.list(skip, limit),
+    pageSize: 50,
+  });
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete proxy source "${name}"?`)) return;
     try {
       await proxySourceApi.delete(id);
-      setSources((prev) => prev.filter((s) => s.id !== id));
-      setTotal((prev) => prev - 1);
+      reset();
     } catch (err) {
-      console.error('Delete failed:', err);
       alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
@@ -42,12 +25,11 @@ export default function ProxySources() {
       await proxySourceApi.triggerFetch(id);
       alert('Fetch task queued!');
     } catch (err) {
-      console.error('Fetch trigger failed:', err);
       alert(`Failed to trigger fetch: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  if (loading) {
+  if (loading && sources.length === 0) {
     return (
       <div className="loading-overlay">
         <div className="spinner" />
@@ -92,64 +74,73 @@ export default function ProxySources() {
                 </td>
               </tr>
             ) : (
-              sources.map((source) => (
-                <tr key={source.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {source.name}
-                    </div>
-                    {source.description && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {source.description.slice(0, 80)}{source.description.length > 80 ? '…' : ''}
+              <>
+                {sources.map((source) => (
+                  <tr key={source.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {source.name}
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    <span className="badge badge--queued">{source.format_type}</span>
-                  </td>
-                  <td>
-                    <span className={`badge badge--${source.is_active ? 'success' : 'cancelled'}`}>
-                      {source.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                    {source.last_fetch_error && (
-                      <div style={{ fontSize: '0.7rem', color: 'var(--status-failed)', marginTop: 2 }}>
-                        Error: {source.last_fetch_error.slice(0, 50)}
+                      {source.description && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          {source.description.slice(0, 80)}{source.description.length > 80 ? '…' : ''}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span className="badge badge--queued">{source.format_type}</span>
+                    </td>
+                    <td>
+                      <span className={`badge badge--${source.is_active ? 'success' : 'cancelled'}`}>
+                        {source.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      {source.last_fetch_error && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--status-failed)', marginTop: 2 }}>
+                          Error: {source.last_fetch_error.slice(0, 50)}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {source.last_fetched_at
+                        ? new Date(source.last_fetched_at).toLocaleString()
+                        : '—'}
+                    </td>
+                    <td>
+                      <div className="action-btns">
+                        <Link to={`/proxy-sources/${source.id}`} className="action-btn" title="View">
+                          <IconEye size={16} />
+                        </Link>
+                        <Link to={`/proxy-sources/${source.id}/edit`} className="action-btn" title="Edit">
+                          <IconEdit size={16} />
+                        </Link>
+                        <button
+                          type="button"
+                          className="action-btn"
+                          title="Fetch Now"
+                          onClick={() => handleFetch(source.id)}
+                        >
+                          <IconRefresh size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="action-btn action-btn--delete"
+                          title="Delete"
+                          onClick={() => handleDelete(source.id, source.name)}
+                        >
+                          <IconTrash size={16} />
+                        </button>
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    {source.last_fetched_at
-                      ? new Date(source.last_fetched_at).toLocaleString()
-                      : '—'}
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      <Link to={`/proxy-sources/${source.id}`} className="action-btn" title="View">
-                        <IconEye size={16} />
-                      </Link>
-                      <Link to={`/proxy-sources/${source.id}/edit`} className="action-btn" title="Edit">
-                        <IconEdit size={16} />
-                      </Link>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        title="Fetch Now"
-                        onClick={() => handleFetch(source.id)}
-                      >
-                        <IconRefresh size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="action-btn action-btn--delete"
-                        title="Delete"
-                        onClick={() => handleDelete(source.id, source.name)}
-                      >
-                        <IconTrash size={16} />
-                      </button>
-                    </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr ref={sentinelRef as any}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {loadingMore && <div className="spinner" style={{ margin: '0 auto' }} />}
+                    {!loadingMore && sources.length < total && <span>Scroll to load more...</span>}
+                    {!loadingMore && sources.length >= total && total > 0 && <span>All proxy sources loaded</span>}
                   </td>
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>

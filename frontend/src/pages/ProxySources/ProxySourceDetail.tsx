@@ -2,33 +2,32 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { proxySourceApi, proxyApi } from '../../api/client';
 import type { ProxySourceConfig, ValidProxy } from '../../api/client';
-import { IconRefresh, IconTrash } from '../../components/icons/Icons';
-import { IconEdit } from '../../components/icons/Icons';
+import { IconRefresh, IconTrash, IconEdit } from '../../components/icons/Icons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 export default function ProxySourceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [source, setSource] = useState<ProxySourceConfig | null>(null);
-  const [proxies, setProxies] = useState<ValidProxy[]>([]);
-  const [proxyTotal, setProxyTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [validating, setValidating] = useState(false);
 
+  const { items: proxies, total: proxyTotal, loadingMore, sentinelRef } = useInfiniteScroll<ValidProxy>({
+    fetchPage: (skip, limit) => proxyApi.list({ source_id: id!, skip, limit }),
+    pageSize: 50,
+    deps: [id],
+  });
+
   useEffect(() => {
-    if (id) loadData(id);
+    if (id) loadSource(id);
   }, [id]);
 
-  async function loadData(sourceId: string) {
+  async function loadSource(sourceId: string) {
     setLoading(true);
     try {
-      const [src, proxyRes] = await Promise.all([
-        proxySourceApi.get(sourceId),
-        proxyApi.list({ source_id: sourceId, limit: 100 }),
-      ]);
+      const src = await proxySourceApi.get(sourceId);
       setSource(src);
-      setProxies(proxyRes.items);
-      setProxyTotal(proxyRes.total);
     } catch (err) {
       console.error('Failed to load:', err);
     }
@@ -178,27 +177,36 @@ export default function ProxySourceDetail() {
                 </td>
               </tr>
             ) : (
-              proxies.map((proxy) => (
-                <tr key={proxy.id}>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
-                  <td><span className="badge badge--queued">{proxy.protocol}</span></td>
-                  <td>
-                    <span className={`badge badge--${
-                      proxy.health === 'healthy' ? 'success' :
-                      proxy.health === 'degraded' ? 'running' : 'failed'
-                    }`}>
-                      {proxy.health}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    {proxy.avg_response_ms != null ? `${Math.round(proxy.avg_response_ms)}ms` : '—'}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {proxy.last_checked_at ? new Date(proxy.last_checked_at).toLocaleString() : '—'}
+              <>
+                {proxies.map((proxy) => (
+                  <tr key={proxy.id}>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
+                    <td><span className="badge badge--queued">{proxy.protocol}</span></td>
+                    <td>
+                      <span className={`badge badge--${
+                        proxy.health === 'healthy' ? 'success' :
+                        proxy.health === 'degraded' ? 'running' : 'failed'
+                      }`}>
+                        {proxy.health}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      {proxy.avg_response_ms != null ? `${Math.round(proxy.avg_response_ms)}ms` : '—'}
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {proxy.last_checked_at ? new Date(proxy.last_checked_at).toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+                <tr ref={sentinelRef as any}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {loadingMore && <div className="spinner" style={{ margin: '0 auto' }} />}
+                    {!loadingMore && proxies.length < proxyTotal && <span>Scroll to load more...</span>}
+                    {!loadingMore && proxies.length >= proxyTotal && proxyTotal > 0 && <span>All proxies loaded</span>}
                   </td>
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>

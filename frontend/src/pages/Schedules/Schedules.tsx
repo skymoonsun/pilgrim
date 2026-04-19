@@ -1,36 +1,21 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { schedulesApi } from '../../api/client';
 import type { Schedule } from '../../api/client';
 import { IconPlus, IconEye, IconEdit, IconPlay, IconTrash, IconCalendar, IconClock, IconPause } from '../../components/icons/Icons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 export default function Schedules() {
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSchedules();
-  }, []);
-
-  async function loadSchedules() {
-    setLoading(true);
-    try {
-      const res = await schedulesApi.list(0, 100);
-      setSchedules(res.items);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Failed to load schedules:', err);
-    }
-    setLoading(false);
-  }
+  const { items: schedules, total, loading, loadingMore, sentinelRef, reset } = useInfiniteScroll<Schedule>({
+    fetchPage: (skip, limit) => schedulesApi.list(skip, limit),
+    pageSize: 50,
+  });
 
   async function handleTrigger(id: string, name: string) {
     if (!confirm(`Trigger schedule "${name}" now?`)) return;
     try {
       const res = await schedulesApi.trigger(id);
       alert(`Triggered: ${res.jobs_created} jobs created`);
-      loadSchedules();
+      reset();
     } catch (err) {
       console.error('Trigger failed:', err);
     }
@@ -40,8 +25,8 @@ export default function Schedules() {
     if (!confirm(`Delete schedule "${name}"?`)) return;
     try {
       await schedulesApi.delete(id);
-      setSchedules((prev) => prev.filter((s) => s.id !== id));
-      setTotal((prev) => prev - 1);
+      // Reload to keep totals consistent
+      reset();
     } catch (err) {
       console.error('Delete failed:', err);
     }
@@ -50,7 +35,7 @@ export default function Schedules() {
   async function handleToggle(schedule: Schedule) {
     try {
       await schedulesApi.update(schedule.id, { is_active: !schedule.is_active } as Partial<Schedule>);
-      loadSchedules();
+      reset();
     } catch (err) {
       console.error('Toggle failed:', err);
     }
@@ -77,7 +62,7 @@ export default function Schedules() {
     return `in ${Math.floor(hours / 24)}d`;
   }
 
-  if (loading) {
+  if (loading && schedules.length === 0) {
     return (
       <div className="loading-overlay">
         <div className="spinner" />
@@ -126,77 +111,86 @@ export default function Schedules() {
                 </td>
               </tr>
             ) : (
-              schedules.map((schedule) => (
-                <tr key={schedule.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {schedule.name}
-                    </div>
-                    {schedule.description && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {schedule.description.slice(0, 60)}
-                        {schedule.description.length > 60 ? '…' : ''}
+              <>
+                {schedules.map((schedule) => (
+                  <tr key={schedule.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {schedule.name}
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
-                      {schedule.cron_expression ? <IconCalendar size={13} /> : <IconClock size={13} />}
-                      {formatScheduleType(schedule)}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="badge badge--queued">{schedule.config_links.length}</span>
-                  </td>
-                  <td>
-                    <span className="badge badge--queued">
-                      {schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0)}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge badge--${schedule.is_active ? 'success' : 'cancelled'}`}>
-                      {schedule.is_active ? 'Active' : 'Paused'}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    {formatRelativeTime(schedule.next_run_at)}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                    {schedule.run_count}
-                  </td>
-                  <td>
-                    {schedule.callback ? (
-                      <span className={`badge badge--${schedule.callback.is_active ? 'success' : 'cancelled'}`}>
-                        {schedule.callback.method}
+                      {schedule.description && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          {schedule.description.slice(0, 60)}
+                          {schedule.description.length > 60 ? '…' : ''}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
+                        {schedule.cron_expression ? <IconCalendar size={13} /> : <IconClock size={13} />}
+                        {formatScheduleType(schedule)}
                       </span>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      <Link to={`/schedules/${schedule.id}`} className="action-btn" title="View">
-                        <IconEye size={16} />
-                      </Link>
-                      <Link to={`/schedules/${schedule.id}/edit`} className="action-btn" title="Edit">
-                        <IconEdit size={16} />
-                      </Link>
-                      <button className="action-btn" title="Trigger Now"
-                        onClick={() => handleTrigger(schedule.id, schedule.name)}>
-                        <IconPlay size={16} />
-                      </button>
-                      <button className="action-btn" title={schedule.is_active ? 'Pause' : 'Activate'}
-                        onClick={() => handleToggle(schedule)}>
-                        <IconPause size={16} />
-                      </button>
-                      <button className="action-btn" title="Delete"
-                        onClick={() => handleDelete(schedule.id, schedule.name)}>
-                        <IconTrash size={16} />
-                      </button>
-                    </div>
+                    </td>
+                    <td>
+                      <span className="badge badge--queued">{schedule.config_links.length}</span>
+                    </td>
+                    <td>
+                      <span className="badge badge--queued">
+                        {schedule.config_links.reduce((sum, cl) => sum + cl.url_targets.length, 0)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge--${schedule.is_active ? 'success' : 'cancelled'}`}>
+                        {schedule.is_active ? 'Active' : 'Paused'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      {formatRelativeTime(schedule.next_run_at)}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+                      {schedule.run_count}
+                    </td>
+                    <td>
+                      {schedule.callback ? (
+                        <span className={`badge badge--${schedule.callback.is_active ? 'success' : 'cancelled'}`}>
+                          {schedule.callback.method}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="action-btns">
+                        <Link to={`/schedules/${schedule.id}`} className="action-btn" title="View">
+                          <IconEye size={16} />
+                        </Link>
+                        <Link to={`/schedules/${schedule.id}/edit`} className="action-btn" title="Edit">
+                          <IconEdit size={16} />
+                        </Link>
+                        <button className="action-btn" title="Trigger Now"
+                          onClick={() => handleTrigger(schedule.id, schedule.name)}>
+                          <IconPlay size={16} />
+                        </button>
+                        <button className="action-btn" title={schedule.is_active ? 'Pause' : 'Activate'}
+                          onClick={() => handleToggle(schedule)}>
+                          <IconPause size={16} />
+                        </button>
+                        <button className="action-btn" title="Delete"
+                          onClick={() => handleDelete(schedule.id, schedule.name)}>
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr ref={sentinelRef as any}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {loadingMore && <div className="spinner" style={{ margin: '0 auto' }} />}
+                    {!loadingMore && schedules.length < total && <span>Scroll to load more...</span>}
+                    {!loadingMore && schedules.length >= total && total > 0 && <span>All schedules loaded</span>}
                   </td>
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>

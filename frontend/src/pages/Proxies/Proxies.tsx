@@ -1,13 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { proxyApi, proxySourceApi } from '../../api/client';
 import type { ValidProxy, ProxySourceConfig, ManualProxyCreateResult } from '../../api/client';
 import { IconShield, IconTrash, IconPlus } from '../../components/icons/Icons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 export default function Proxies() {
-  const [proxies, setProxies] = useState<ValidProxy[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [healthFilter, setHealthFilter] = useState('');
   const [protocolFilter, setProtocolFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -33,48 +31,30 @@ export default function Proxies() {
   const [bulkText, setBulkText] = useState('');
   const [bulkProtocol, setBulkProtocol] = useState('http');
 
-  useEffect(() => {
-    loadProxies();
-    loadSources();
-  }, [healthFilter, protocolFilter, sourceFilter]);
-
-  async function loadSources() {
-    try {
-      const res = await proxySourceApi.list(0, 200);
-      setSources(res.items);
-    } catch (err) {
-      console.error('Failed to load sources:', err);
-    }
-  }
-
-  async function loadProxies() {
-    if (proxies.length === 0) setLoading(true);
-    try {
-      const params: Record<string, unknown> = {
+  // Infinite scroll
+  const { items: proxies, total, loading, loadingMore, sentinelRef, reset } = useInfiniteScroll<ValidProxy>({
+    fetchPage: (skip, limit) =>
+      proxyApi.list({
         health: healthFilter || undefined,
         protocol: protocolFilter || undefined,
-        limit: 200,
-      };
-      if (sourceFilter === 'manual') {
-        params.manual_only = true;
-      } else if (sourceFilter) {
-        params.source_id = sourceFilter;
-      }
-      const res = await proxyApi.list(params as any);
-      setProxies(res.items);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Failed to load proxies:', err);
-    }
-    setLoading(false);
-  }
+        ...(sourceFilter === 'manual' ? { manual_only: true } : sourceFilter ? { source_id: sourceFilter } : {}),
+        skip,
+        limit,
+      } as any),
+    pageSize: 50,
+    deps: [healthFilter, protocolFilter, sourceFilter],
+  });
+
+  // Load sources for filter dropdown
+  useEffect(() => {
+    proxySourceApi.list(0, 200).then((res) => setSources(res.items)).catch(() => {});
+  }, []);
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this proxy?')) return;
     try {
       await proxyApi.delete(id);
-      setProxies((prev) => prev.filter((p) => p.id !== id));
-      setTotal((prev) => prev - 1);
+      reset();
     } catch (err) {
       alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
@@ -108,7 +88,7 @@ export default function Proxies() {
         password: singleForm.password || null,
       });
       setAddResult(result);
-      await loadProxies();
+      reset();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'Failed to add proxy');
     }
@@ -126,11 +106,19 @@ export default function Proxies() {
         default_protocol: bulkProtocol,
       });
       setAddResult(result);
-      await loadProxies();
+      reset();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'Failed to add proxies');
     }
     setAdding(false);
+  }
+
+  if (loading && proxies.length === 0) {
+    return (
+      <div className="loading-overlay">
+        <div className="spinner" />
+      </div>
+    );
   }
 
   return (
@@ -183,9 +171,6 @@ export default function Proxies() {
       </div>
 
       <div className="card table-card">
-        {loading && proxies.length === 0 && (
-          <div className="loading-overlay"><div className="spinner" /></div>
-        )}
         <table>
           <thead>
             <tr>
@@ -214,60 +199,74 @@ export default function Proxies() {
                 </td>
               </tr>
             ) : (
-              proxies.map((proxy) => (
-                <tr key={proxy.id}>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
-                  <td><span className="badge badge--queued">{proxy.protocol}</span></td>
-                  <td>
-                    {proxy.source_config_id ? (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                        {proxy.source_name || 'Source'}
+              <>
+                {proxies.map((proxy) => (
+                  <tr key={proxy.id}>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{proxy.ip}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{proxy.port}</td>
+                    <td><span className="badge badge--queued">{proxy.protocol}</span></td>
+                    <td>
+                      {proxy.source_config_id ? (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          {proxy.source_name || 'Source'}
+                        </span>
+                      ) : (
+                        <span className="badge" style={{
+                          background: 'rgba(0,240,255,0.1)',
+                          color: 'var(--accent-cyan)',
+                          border: '1px solid rgba(0,240,255,0.3)',
+                          fontSize: '0.7rem',
+                          padding: '2px 8px',
+                          borderRadius: 'var(--radius-sm)',
+                        }}>
+                          Manual
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`badge badge--${
+                        proxy.health === 'healthy' ? 'success' :
+                        proxy.health === 'degraded' ? 'running' : 'failed'
+                      }`}>
+                        {proxy.health}
                       </span>
-                    ) : (
-                      <span className="badge" style={{
-                        background: 'rgba(0,240,255,0.1)',
-                        color: 'var(--accent-cyan)',
-                        border: '1px solid rgba(0,240,255,0.3)',
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        Manual
-                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      {proxy.avg_response_ms != null ? `${Math.round(proxy.avg_response_ms)}ms` : '—'}
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      <span style={{ color: 'var(--status-success)' }}>{proxy.success_count}</span>
+                      {' / '}
+                      <span style={{ color: 'var(--status-failed)' }}>{proxy.failure_count}</span>
+                    </td>
+                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {proxy.last_checked_at ? new Date(proxy.last_checked_at).toLocaleString() : '—'}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="action-btn action-btn--delete"
+                        title="Delete"
+                        onClick={() => handleDelete(proxy.id)}
+                      >
+                        <IconTrash size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {/* Sentinel element for infinite scroll */}
+                <tr ref={sentinelRef as any}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {loadingMore && <div className="spinner" style={{ margin: '0 auto' }} />}
+                    {!loadingMore && proxies.length < total && (
+                      <span style={{ color: 'var(--text-muted)' }}>Scroll to load more...</span>
+                    )}
+                    {!loadingMore && proxies.length >= total && total > 0 && (
+                      <span style={{ color: 'var(--text-muted)' }}>All proxies loaded</span>
                     )}
                   </td>
-                  <td>
-                    <span className={`badge badge--${
-                      proxy.health === 'healthy' ? 'success' :
-                      proxy.health === 'degraded' ? 'running' : 'failed'
-                    }`}>
-                      {proxy.health}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    {proxy.avg_response_ms != null ? `${Math.round(proxy.avg_response_ms)}ms` : '—'}
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    <span style={{ color: 'var(--status-success)' }}>{proxy.success_count}</span>
-                    {' / '}
-                    <span style={{ color: 'var(--status-failed)' }}>{proxy.failure_count}</span>
-                  </td>
-                  <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {proxy.last_checked_at ? new Date(proxy.last_checked_at).toLocaleString() : '—'}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="action-btn action-btn--delete"
-                      title="Delete"
-                      onClick={() => handleDelete(proxy.id)}
-                    >
-                      <IconTrash size={16} />
-                    </button>
-                  </td>
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>
