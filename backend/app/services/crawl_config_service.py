@@ -54,7 +54,9 @@ class CrawlConfigService:
         limit: int = 50,
     ) -> tuple[list[CrawlConfiguration], int]:
         """Return paginated configs and total count."""
-        query = select(CrawlConfiguration)
+        query = select(CrawlConfiguration).options(
+            selectinload(CrawlConfiguration.sanitizer_config)
+        )
         count_query = select(func.count()).select_from(CrawlConfiguration)
 
         if active_only:
