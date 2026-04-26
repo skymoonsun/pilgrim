@@ -733,3 +733,68 @@ export const proxyApi = {
       method: 'POST',
     }),
 };
+
+// ── Activities (unified feed) ─────────────────────────────
+
+export type ActivityType = 'crawl_job' | 'proxy_fetch' | 'proxy_validation';
+
+export interface ActivityItemBase {
+  id: string;
+  type: ActivityType;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface CrawlJobActivity extends ActivityItemBase {
+  type: 'crawl_job';
+  crawl_configuration_id: string;
+  target_url: string;
+  queue: string;
+  priority: number;
+  started_at: string | null;
+  finished_at: string | null;
+  result_summary: Record<string, unknown> | null;
+}
+
+export interface ProxyFetchActivity extends ActivityItemBase {
+  type: 'proxy_fetch';
+  source_config_id: string;
+  source_name: string | null;
+  proxies_found: number;
+  proxies_new: number;
+  proxies_updated: number;
+  content_length: number;
+  duration_ms: number;
+}
+
+export interface ProxyValidationActivity extends ActivityItemBase {
+  type: 'proxy_validation';
+  source_config_id: string;
+  source_name: string | null;
+  proxies_tested: number;
+  proxies_healthy: number;
+  proxies_degraded: number;
+  proxies_unhealthy: number;
+  proxies_removed: number;
+  duration_ms: number;
+}
+
+export type ActivityItem = CrawlJobActivity | ProxyFetchActivity | ProxyValidationActivity;
+
+export interface ActivityListResponse {
+  items: ActivityItem[];
+  total: number;
+}
+
+export const activitiesApi = {
+  list: (params?: { type?: ActivityType[]; skip?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.skip !== undefined) sp.set('skip', String(params.skip));
+    if (params?.limit !== undefined) sp.set('limit', String(params.limit));
+    if (params?.type) {
+      for (const t of params.type) sp.append('type', t);
+    }
+    return request<ActivityListResponse>(`/activities/?${sp.toString()}`);
+  },
+};

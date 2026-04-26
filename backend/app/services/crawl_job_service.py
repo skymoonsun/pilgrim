@@ -12,6 +12,8 @@ from app.models.crawl_job import CrawlJob
 from app.models.enums import CrawlJobStatus
 from app.schemas.crawl import CrawlJobCreate
 
+TERMINAL_STATUSES = {CrawlJobStatus.SUCCEEDED, CrawlJobStatus.FAILED, CrawlJobStatus.CANCELLED}
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,8 +86,19 @@ class CrawlJobService:
         result_summary: dict | None = None,
         celery_task_id: str | None = None,
     ) -> CrawlJob:
-        """Update the authoritative status of a crawl job."""
+        """Update the authoritative status of a crawl job.
+
+        Automatically sets started_at when transitioning to RUNNING
+        and finished_at when transitioning to a terminal status.
+        """
         job = await self.get_by_id(job_id)
+        now = func.now()
+
+        if status == CrawlJobStatus.RUNNING and job.started_at is None:
+            job.started_at = now
+        if status in TERMINAL_STATUSES and job.finished_at is None:
+            job.finished_at = now
+
         job.status = status
         if error_message is not None:
             job.error_message = error_message

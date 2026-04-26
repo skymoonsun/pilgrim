@@ -1,8 +1,10 @@
 """CrawlJob model — authoritative job status lives here, not in Redis."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    DateTime,
     Enum as SQLEnum,
     ForeignKey,
     Integer,
@@ -40,6 +42,14 @@ class CrawlJob(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         default=CrawlJobStatus.QUEUED,
         index=True,
+    )
+
+    # ── Timing ───────────────────────────────────────────────────
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True,
     )
 
     # ── Celery auxiliary ─────────────────────────────────────────

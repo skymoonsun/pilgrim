@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai, crawl, crawl_configs, health, proxy_sources, proxies, schedules, scrape
+from app.api.v1.endpoints import activities, ai, crawl, crawl_configs, health, proxy_sources, proxies, schedules, scrape
 
 api_router = APIRouter()
 
@@ -29,4 +29,7 @@ api_router.include_router(
 )
 api_router.include_router(
     proxies.router, prefix="/proxies", tags=["proxies"]
+)
+api_router.include_router(
+    activities.router, prefix="/activities", tags=["activities"]
 )
