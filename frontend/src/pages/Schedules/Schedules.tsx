@@ -3,6 +3,8 @@ import { schedulesApi } from '../../api/client';
 import type { Schedule } from '../../api/client';
 import { IconPlus, IconEye, IconEdit, IconPlay, IconTrash, IconCalendar, IconClock, IconPause } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function Schedules() {
   const { items: schedules, total, loading, loadingMore, sentinelRef, reset } = useInfiniteScroll<Schedule>({
@@ -11,10 +13,10 @@ export default function Schedules() {
   });
 
   async function handleTrigger(id: string, name: string) {
-    if (!confirm(`Trigger schedule "${name}" now?`)) return;
+    if (!(await confirmDialog({ title: 'Trigger Schedule', message: `Trigger schedule "${name}" now?` }))) return;
     try {
       const res = await schedulesApi.trigger(id);
-      alert(`Triggered: ${res.jobs_created} jobs created`);
+      toast.success(`${res.jobs_created} job${res.jobs_created !== 1 ? 's' : ''} created`);
       reset();
     } catch (err) {
       console.error('Trigger failed:', err);
@@ -22,10 +24,9 @@ export default function Schedules() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete schedule "${name}"?`)) return;
+    if (!(await confirmDialog({ title: 'Delete Schedule', message: `Delete schedule "${name}"?`, danger: true }))) return;
     try {
       await schedulesApi.delete(id);
-      // Reload to keep totals consistent
       reset();
     } catch (err) {
       console.error('Delete failed:', err);

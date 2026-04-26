@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
 import { IconConfig, IconFlask, IconEdit, IconTrash, IconRefresh } from '../../components/icons/Icons';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
 
 export default function ConfigDetail() {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +28,7 @@ export default function ConfigDetail() {
   }
 
   async function handleDelete() {
-    if (!config || !confirm(`Delete "${config.name}"?`)) return;
+    if (!config || !(await confirmDialog({ title: 'Delete Configuration', message: `Delete "${config.name}"?`, danger: true }))) return;
     try {
       await configsApi.delete(config.id);
       navigate('/configurations');

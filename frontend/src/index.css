@@ -784,3 +784,155 @@ textarea.form-input {
 .stats-grid .card:nth-child(1) { animation-delay: 240ms; }
 .stats-grid .card:nth-child(2) { animation-delay: 300ms; }
 .stats-grid .card:nth-child(3) { animation-delay: 360ms; }
+
+/* ── Overlay Backdrop ─────────────────────────────────── */
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeInOverlay 0.2s ease forwards;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Confirm Dialog ─────────────────────────────────────── */
+.confirm-dialog {
+  width: 420px;
+  max-width: 90vw;
+  background: var(--bg-card);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-card), 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: fadeIn 0.25s ease forwards;
+}
+
+.confirm-dialog-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.confirm-dialog-icon.danger {
+  background: var(--status-failed-bg);
+  color: var(--status-failed);
+}
+
+.confirm-dialog-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.confirm-dialog-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-danger {
+  background: var(--status-failed);
+  color: #fff;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.btn-danger:hover {
+  background: #ff6666;
+  box-shadow: 0 4px 20px rgba(255, 82, 82, 0.3);
+}
+
+/* ── Toast ──────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  min-width: 280px;
+  max-width: 460px;
+  pointer-events: auto;
+  animation: toastSlideIn 0.25s ease forwards;
+  cursor: pointer;
+}
+
+.toast--success { border-left: 3px solid var(--status-success); }
+.toast--error   { border-left: 3px solid var(--status-failed); }
+.toast--info    { border-left: 3px solid var(--accent-primary); }
+
+.toast--exit {
+  animation: toastSlideOut 0.3s ease forwards;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toast-icon--success { color: var(--status-success); }
+.toast-icon--error   { color: var(--status-failed); }
+.toast-icon--info    { color: var(--accent-primary); }
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(40px); }
+}

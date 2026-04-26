@@ -3,6 +3,8 @@ import { proxySourceApi } from '../../api/client';
 import type { ProxySourceConfig } from '../../api/client';
 import { IconPlus, IconEye, IconEdit, IconTrash, IconGlobe, IconRefresh } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function ProxySources() {
   const { items: sources, total, loading, loadingMore, sentinelRef, reset } = useInfiniteScroll<ProxySourceConfig>({
@@ -11,21 +13,21 @@ export default function ProxySources() {
   });
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete proxy source "${name}"?`)) return;
+    if (!(await confirmDialog({ title: 'Delete Proxy Source', message: `Delete proxy source "${name}"?`, danger: true }))) return;
     try {
       await proxySourceApi.delete(id);
       reset();
     } catch (err) {
-      alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
 
   async function handleFetch(id: string) {
     try {
       await proxySourceApi.triggerFetch(id);
-      alert('Fetch task queued!');
+      toast.success('Fetch task queued!');
     } catch (err) {
-      alert(`Failed to trigger fetch: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed to trigger fetch: ${err instanceof Error ? err.message : err}`);
     }
   }
 

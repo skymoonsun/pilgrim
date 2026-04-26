@@ -6,6 +6,8 @@ import {
   IconCalendar, IconClock, IconPlay, IconTrash, IconPause,
   IconPlus, IconLink, IconWebhook, IconRefresh, IconEdit, IconMail, IconGlobe,
 } from '../../components/icons/Icons';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function ScheduleDetail() {
   const { id } = useParams<{ id: string }>();
@@ -43,17 +45,17 @@ export default function ScheduleDetail() {
   }
 
   async function handleTrigger() {
-    if (!schedule || !confirm('Trigger this schedule now?')) return;
+    if (!schedule || !(await confirmDialog({ title: 'Trigger Schedule', message: 'Trigger this schedule now?' }))) return;
     try {
       const res = await schedulesApi.trigger(schedule.id);
       if (res.schedule_type === 'proxy_source') {
-        alert(`${res.fetches_triggered} proxy source fetches triggered!`);
+        toast.success(`${res.fetches_triggered} proxy source fetches triggered!`);
       } else {
-        alert(`${res.jobs_created} jobs created!`);
+        toast.info(`${res.jobs_created} jobs created!`);
       }
       loadSchedule(schedule.id);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Trigger failed');
+      toast.error(err instanceof Error ? err.message : 'Trigger failed');
     }
   }
 
@@ -68,12 +70,12 @@ export default function ScheduleDetail() {
   }
 
   async function handleDelete() {
-    if (!schedule || !confirm(`Delete "${schedule.name}"?`)) return;
+    if (!schedule || !(await confirmDialog({ title: 'Delete Schedule', message: `Delete "${schedule.name}"?`, danger: true }))) return;
     try {
       await schedulesApi.delete(schedule.id);
       navigate('/schedules');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
     }
   }
 
@@ -89,7 +91,7 @@ export default function ScheduleDetail() {
       setNewUrls((prev) => ({ ...prev, [configLinkId]: { url: '', label: '' } }));
       loadSchedule(schedule.id);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   }
 

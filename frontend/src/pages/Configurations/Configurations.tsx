@@ -3,6 +3,8 @@ import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
 import { IconPlus, IconEye, IconEdit, IconFlask, IconTrash, IconConfig } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function Configurations() {
   const { items: configs, total, loading, loadingMore, sentinelRef } = useInfiniteScroll<CrawlConfig>({
@@ -11,13 +13,12 @@ export default function Configurations() {
   });
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete config "${name}"?`)) return;
+    if (!(await confirmDialog({ title: 'Delete Configuration', message: `Delete config "${name}"?`, danger: true }))) return;
     try {
       await configsApi.delete(id);
-      // Reload to keep consistency
       window.location.reload();
     } catch (err) {
-      alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
 

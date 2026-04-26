@@ -4,6 +4,8 @@ import { proxyApi, proxySourceApi } from '../../api/client';
 import type { ValidProxy, ProxySourceConfig, ManualProxyCreateResult } from '../../api/client';
 import { IconShield, IconTrash, IconPlus } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function Proxies() {
   const [healthFilter, setHealthFilter] = useState('');
@@ -83,27 +85,27 @@ export default function Proxies() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this proxy?')) return;
+    if (!(await confirmDialog({ title: 'Delete Proxy', message: 'Delete this proxy?', danger: true }))) return;
     try {
       await proxyApi.delete(id);
       setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       reset();
     } catch (err) {
-      alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
 
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} selected proxy${selectedIds.size !== 1 ? 'ies' : 'y'}?`)) return;
+    if (!(await confirmDialog({ title: 'Delete Proxies', message: `Delete ${selectedIds.size} selected proxy${selectedIds.size !== 1 ? 'ies' : 'y'}?`, danger: true }))) return;
     setDeleting(true);
     try {
       const res = await proxyApi.bulkDelete(Array.from(selectedIds));
       setSelectedIds(new Set());
       reset();
-      alert(`Deleted ${res.deleted} proxies`);
+      toast.success(`Deleted ${res.deleted} proxies`);
     } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed: ${err instanceof Error ? err.message : err}`);
     }
     setDeleting(false);
   }
@@ -113,7 +115,7 @@ export default function Proxies() {
     const msg = filterDesc
       ? `Delete ALL proxies matching: ${filterDesc}?`
       : 'Delete ALL proxies? This cannot be undone.';
-    if (!confirm(msg)) return;
+    if (!(await confirmDialog({ title: 'Delete All Proxies', message: msg, danger: true, confirmLabel: 'Delete All' }))) return;
     setDeleting(true);
     try {
       const res = await proxyApi.deleteAll({
@@ -124,9 +126,9 @@ export default function Proxies() {
       });
       setSelectedIds(new Set());
       reset();
-      alert(`Deleted ${res.deleted} proxies`);
+      toast.success(`Deleted ${res.deleted} proxies`);
     } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed: ${err instanceof Error ? err.message : err}`);
     }
     setDeleting(false);
   }

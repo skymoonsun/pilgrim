@@ -4,6 +4,7 @@ import { sanitizerConfigsApi } from '../../api/client';
 import type { SanitizerConfig } from '../../api/client';
 import { IconPlus, IconRefresh, IconFilter, IconEye, IconEdit, IconTrash } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
 
 export default function SanitizerConfigs() {
   const [activeOnly, setActiveOnly] = useState(false);
@@ -17,7 +18,7 @@ export default function SanitizerConfigs() {
 
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.preventDefault();
-    if (!confirm('Delete this sanitizer config?')) return;
+    if (!(await confirmDialog({ title: 'Delete Sanitizer Config', message: 'Delete this sanitizer config?', danger: true }))) return;
     await sanitizerConfigsApi.delete(id);
     reset();
   }

@@ -4,6 +4,8 @@ import { proxySourceApi, proxyApi } from '../../api/client';
 import type { ProxySourceConfig, ValidProxy, ProxyFetchLog, ProxyValidationLog } from '../../api/client';
 import { IconRefresh, IconTrash, IconEdit, IconClock, IconCheck } from '../../components/icons/Icons';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/Toast';
 
 export default function ProxySourceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -54,11 +56,10 @@ export default function ProxySourceDetail() {
     setFetching(true);
     try {
       await proxySourceApi.triggerFetch(id);
-      alert('Fetch + validate task queued! Results will appear in logs shortly.');
-      // Reload after a delay to let tasks complete
+      toast.success('Fetch + validate task queued! Results will appear in logs shortly.');
       setTimeout(() => loadSource(id), 5000);
     } catch (err) {
-      alert(`Fetch failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Fetch failed: ${err instanceof Error ? err.message : err}`);
     }
     setFetching(false);
   }
@@ -68,22 +69,22 @@ export default function ProxySourceDetail() {
     setValidating(true);
     try {
       await proxyApi.triggerValidate(id);
-      alert('Re-validation task queued!');
+      toast.success('Re-validation task queued!');
       setTimeout(() => loadSource(id), 5000);
     } catch (err) {
-      alert(`Validation failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Validation failed: ${err instanceof Error ? err.message : err}`);
     }
     setValidating(false);
   }
 
   async function handleDelete() {
     if (!id || !source) return;
-    if (!confirm(`Delete proxy source "${source.name}" and all its proxies?`)) return;
+    if (!(await confirmDialog({ title: 'Delete Proxy Source', message: `Delete proxy source "${source.name}" and all its proxies?`, danger: true }))) return;
     try {
       await proxySourceApi.delete(id);
       navigate('/proxy-sources');
     } catch (err) {
-      alert(`Failed to delete: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Failed to delete: ${err instanceof Error ? err.message : err}`);
     }
   }
 
