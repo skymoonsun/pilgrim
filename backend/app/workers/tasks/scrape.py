@@ -72,9 +72,16 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
             start = time.monotonic()
             try:
                 # 3. Load config (eagerly loaded via relationship)
-                config = await session.run_sync(
-                    lambda s: job.crawl_configuration
+                from sqlalchemy import select as sa_select
+                from sqlalchemy.orm import selectinload as so
+                from app.models.crawl_config import CrawlConfiguration
+
+                result = await session.execute(
+                    sa_select(CrawlConfiguration)
+                    .options(so(CrawlConfiguration.sanitizer_config))
+                    .where(CrawlConfiguration.id == job.crawl_configuration_id)
                 )
+                config = result.scalar_one()
 
                 # 4. Fetch
                 fetcher = create_fetcher(
@@ -109,6 +116,13 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                     response, config.extraction_spec,
                     next_data=next_data, json_ld=json_ld,
                 )
+
+                # Apply sanitizer if linked
+                if config.sanitizer_config and config.sanitizer_config.rules:
+                    from app.schemas.sanitizer_config import FieldSanitizer
+                    from app.services.sanitizer import apply_sanitizer
+                    rules = [FieldSanitizer(**r) for r in config.sanitizer_config.rules]
+                    data = apply_sanitizer(data, rules)
 
                 # 6. Persist result
                 result = CrawlJobResult(

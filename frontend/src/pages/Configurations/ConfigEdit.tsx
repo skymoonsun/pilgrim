@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { configsApi } from '../../api/client';
-import type { CrawlConfig } from '../../api/client';
+import { configsApi, sanitizerConfigsApi } from '../../api/client';
+import type { CrawlConfig, SanitizerConfig } from '../../api/client';
 import { IconConfig } from '../../components/icons/Icons';
 
 const PROFILES = ['fetcher', 'http_session', 'stealth', 'dynamic', 'spider'];
@@ -21,11 +21,20 @@ export default function ConfigEdit() {
     rotate_user_agent: true,
     custom_delay: '',
     max_concurrent: '',
+    sanitizer_config_id: '',
     is_active: true,
     extraction_spec: '',
     fetch_options: '',
     custom_headers: '',
   });
+
+  const [sanitizerConfigs, setSanitizerConfigs] = useState<SanitizerConfig[]>([]);
+
+  useEffect(() => {
+    sanitizerConfigsApi.list(0, 200, true).then((res) => {
+      setSanitizerConfigs(res.items);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (id) loadConfig(id);
@@ -43,6 +52,7 @@ export default function ConfigEdit() {
         rotate_user_agent: config.rotate_user_agent,
         custom_delay: config.custom_delay?.toString() || '',
         max_concurrent: config.max_concurrent?.toString() || '',
+        sanitizer_config_id: config.sanitizer_config_id || '',
         is_active: config.is_active,
         extraction_spec: config.extraction_spec ? JSON.stringify(config.extraction_spec, null, 2) : '',
         fetch_options: config.fetch_options ? JSON.stringify(config.fetch_options, null, 2) : '',
@@ -94,6 +104,7 @@ export default function ConfigEdit() {
         rotate_user_agent: form.rotate_user_agent,
         custom_delay: form.custom_delay ? parseFloat(form.custom_delay) : null,
         max_concurrent: form.max_concurrent ? parseInt(form.max_concurrent) : null,
+        sanitizer_config_id: form.sanitizer_config_id || null,
         is_active: form.is_active,
         extraction_spec,
         fetch_options,
@@ -168,6 +179,16 @@ export default function ConfigEdit() {
               <select className="form-input form-select" value={form.scraper_profile}
                 onChange={(e) => updateField('scraper_profile', e.target.value)}>
                 {PROFILES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Sanitizer Config</label>
+              <select className="form-input form-select" value={form.sanitizer_config_id}
+                onChange={(e) => updateField('sanitizer_config_id', e.target.value)}>
+                <option value="">None</option>
+                {sanitizerConfigs.map((sc) => (
+                  <option key={sc.id} value={sc.id}>{sc.name} ({sc.rules.length} rules)</option>
+                ))}
               </select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

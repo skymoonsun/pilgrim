@@ -14,6 +14,8 @@ export interface CrawlConfig {
   custom_headers: Record<string, string> | null;
   custom_delay: number | null;
   max_concurrent: number | null;
+  sanitizer_config_id: string | null;
+  sanitizer_config: SanitizerConfig | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -255,6 +257,13 @@ export interface AIStatusResponse {
   reachable: boolean;
 }
 
+export interface SanitizerSuggestionResponse {
+  rules: FieldSanitizer[];
+  sample_before: Record<string, unknown> | null;
+  sample_after: Record<string, unknown> | null;
+  model_used: string;
+}
+
 export interface VerifySpecRequest {
   url: string;
   extraction_spec: Record<string, unknown>;
@@ -493,6 +502,12 @@ export const aiApi = {
 
   suggestProxySource: (data: ProxySourceSuggestionRequest) =>
     request<ProxySourceSuggestionResponse>('/ai/suggest-proxy-source', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  suggestSanitizer: (data: { url: string; extraction_spec: Record<string, unknown>; description?: string; scraper_profile?: string }) =>
+    request<SanitizerSuggestionResponse>('/ai/suggest-sanitizer', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -797,4 +812,58 @@ export const activitiesApi = {
     }
     return request<ActivityListResponse>(`/activities/?${sp.toString()}`);
   },
+};
+
+// ── Sanitizer Configs ──────────────────────────────────────
+
+export interface TransformRule {
+  type: string;
+  pattern?: string;
+  replacement?: string;
+  value?: string;
+  index?: number;
+}
+
+export interface FieldSanitizer {
+  field: string;
+  transforms: TransformRule[];
+}
+
+export interface SanitizerConfig {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  rules: FieldSanitizer[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SanitizerConfigListResponse {
+  items: SanitizerConfig[];
+  total: number;
+}
+
+export const sanitizerConfigsApi = {
+  list: (skip = 0, limit = 50, activeOnly = false) =>
+    request<SanitizerConfigListResponse>(
+      `/sanitizer-configs/?skip=${skip}&limit=${limit}&active_only=${activeOnly}`
+    ),
+
+  get: (id: string) => request<SanitizerConfig>(`/sanitizer-configs/${id}`),
+
+  create: (data: Partial<SanitizerConfig>) =>
+    request<SanitizerConfig>('/sanitizer-configs/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<SanitizerConfig>) =>
+    request<SanitizerConfig>(`/sanitizer-configs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/sanitizer-configs/${id}`, { method: 'DELETE' }),
 };

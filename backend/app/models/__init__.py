@@ -10,6 +10,7 @@ from app.models.enums import (
     ScheduleType,
     ScraperProfile,
     ScheduleStatus,
+    TransformType,
 )
 from app.models.crawl_config import CrawlConfiguration
 from app.models.crawl_job import CrawlJob
@@ -22,6 +23,7 @@ from app.models.callback_config import CallbackConfig
 from app.models.callback_log import CallbackLog
 from app.models.email_notification_config import EmailNotificationConfig
 from app.models.email_notification_log import EmailNotificationLog
+from app.models.sanitizer_config import SanitizerConfig
 from app.models.proxy_source_config import ProxySourceConfig
 from app.models.valid_proxy import ValidProxy
 from app.models.proxy_fetch_log import ProxyFetchLog
@@ -41,6 +43,8 @@ __all__ = [
     "ProxyFormatType",
     "ProxyProtocol",
     "ProxyHealthStatus",
+    "TransformType",
+    "SanitizerConfig",
     "CrawlConfiguration",
     "CrawlJob",
     "CrawlJobResult",

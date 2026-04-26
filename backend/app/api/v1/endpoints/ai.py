@@ -11,6 +11,8 @@ from app.schemas.ai import (
     ProxySourceSuggestionResponse,
     ProxySourceVerifyRequest,
     ProxySourceVerifyResult,
+    SanitizerSuggestionRequest,
+    SanitizerSuggestionResponse,
     SpecVerificationResponse,
     VerifySpecRequest,
 )
@@ -117,4 +119,31 @@ async def verify_proxy_source(
         url=body.url,
         format_type=body.format_type,
         extraction_spec=body.extraction_spec,
+    )
+
+
+@router.post(
+    "/suggest-sanitizer",
+    response_model=SanitizerSuggestionResponse,
+)
+async def suggest_sanitizer(
+    body: SanitizerSuggestionRequest,
+) -> SanitizerSuggestionResponse:
+    """Suggest sanitizer rules based on extracted data from a URL.
+
+    Fetches the page, applies the given extraction_spec to get raw data,
+    then asks the LLM to suggest appropriate sanitization transforms.
+    Returns suggested rules along with before/after sample data.
+    """
+    try:
+        profile = ScraperProfile(body.scraper_profile)
+    except ValueError:
+        profile = ScraperProfile.FETCHER
+
+    service = AIService()
+    return await service.suggest_sanitizer(
+        url=body.url,
+        extraction_spec=body.extraction_spec,
+        description=body.description,
+        scraper_profile=profile,
     )

@@ -5,6 +5,10 @@ import Configurations from './pages/Configurations/Configurations';
 import ConfigCreate from './pages/Configurations/ConfigCreate';
 import ConfigDetail from './pages/Configurations/ConfigDetail';
 import ConfigEdit from './pages/Configurations/ConfigEdit';
+import SanitizerConfigs from './pages/SanitizerConfigs/SanitizerConfigs';
+import SanitizerConfigCreate from './pages/SanitizerConfigs/SanitizerConfigCreate';
+import SanitizerConfigDetail from './pages/SanitizerConfigs/SanitizerConfigDetail';
+import SanitizerConfigEdit from './pages/SanitizerConfigs/SanitizerConfigEdit';
 import Schedules from './pages/Schedules/Schedules';
 import ScheduleCreate from './pages/Schedules/ScheduleCreate';
 import ScheduleDetail from './pages/Schedules/ScheduleDetail';
@@ -29,6 +33,10 @@ export default function App() {
         <Route path="configurations/new" element={<ConfigCreate />} />
         <Route path="configurations/:id" element={<ConfigDetail />} />
         <Route path="configurations/:id/edit" element={<ConfigEdit />} />
+        <Route path="sanitizer-configs" element={<SanitizerConfigs />} />
+        <Route path="sanitizer-configs/new" element={<SanitizerConfigCreate />} />
+        <Route path="sanitizer-configs/:id" element={<SanitizerConfigDetail />} />
+        <Route path="sanitizer-configs/:id/edit" element={<SanitizerConfigEdit />} />
         <Route path="schedules" element={<Schedules />} />
         <Route path="schedules/new" element={<ScheduleCreate />} />
         <Route path="schedules/:id" element={<ScheduleDetail />} />

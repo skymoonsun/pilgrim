@@ -32,7 +32,7 @@ class ScrapeService:
         """Fetch *url* using the rules from *config_id* and return data."""
         start = time.monotonic()
 
-        # 1. Load config
+        # 1. Load config (with sanitizer relationship)
         config_service = CrawlConfigService(self.session)
         config = await config_service.get_by_id(config_id)
 
@@ -98,6 +98,13 @@ class ScrapeService:
                 response, config.extraction_spec,
                 next_data=next_data, json_ld=json_ld,
             )
+
+            # 4. Apply sanitizer if linked
+            if config.sanitizer_config and config.sanitizer_config.rules:
+                from app.schemas.sanitizer_config import FieldSanitizer
+                rules = [FieldSanitizer(**r) for r in config.sanitizer_config.rules]
+                from app.services.sanitizer import apply_sanitizer
+                data = apply_sanitizer(data, rules)
         except Exception as exc:
             logger.error("Extraction failed for %s: %s", url, exc)
             return ScrapeResponse(

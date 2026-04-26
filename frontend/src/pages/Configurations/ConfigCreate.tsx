@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { configsApi, aiApi } from '../../api/client';
-import type { SpecVerificationResponse } from '../../api/client';
+import { configsApi, aiApi, sanitizerConfigsApi } from '../../api/client';
+import type { SpecVerificationResponse, SanitizerConfig } from '../../api/client';
 import { IconPlus, IconSparkle } from '../../components/icons/Icons';
 
 const PROFILES = ['fetcher', 'http_session', 'stealth', 'dynamic', 'spider'];
@@ -19,11 +19,14 @@ export default function ConfigCreate() {
     rotate_user_agent: true,
     custom_delay: '',
     max_concurrent: '',
+    sanitizer_config_id: '',
     is_active: true,
     extraction_spec: '{\n  "fields": {\n    "title": { "selector": "h1::text", "type": "css" }\n  }\n}',
     fetch_options: '',
     custom_headers: '',
   });
+
+  const [sanitizerConfigs, setSanitizerConfigs] = useState<SanitizerConfig[]>([]);
 
   // AI mode state
   const [aiAvailable, setAiAvailable] = useState(false);
@@ -39,6 +42,18 @@ export default function ConfigCreate() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyResult, setVerifyResult] = useState<SpecVerificationResponse | null>(null);
   const [verifyError, setVerifyError] = useState('');
+
+  // Sanitizer AI state
+  const [sanitizerAiLoading, setSanitizerAiLoading] = useState(false);
+  const [sanitizerAiError, setSanitizerAiError] = useState('');
+  const [sanitizerAiDescription, setSanitizerAiDescription] = useState('');
+  const [sanitizerAiResult, setSanitizerAiResult] = useState<{ rules: { field: string; transforms: { type: string; pattern?: string; replacement?: string; value?: string; index?: number }[] }[]; sample_before: Record<string, unknown> | null; sample_after: Record<string, unknown> | null } | null>(null);
+
+  useEffect(() => {
+    sanitizerConfigsApi.list(0, 200, true).then((res) => {
+      setSanitizerConfigs(res.items);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     aiApi.status().then((res) => {
@@ -122,6 +137,62 @@ export default function ConfigCreate() {
     setVerifyLoading(false);
   }
 
+  async function handleGenerateSanitizer() {
+    setSanitizerAiError('');
+    setSanitizerAiLoading(true);
+    setSanitizerAiResult(null);
+
+    try {
+      let extraction_spec: Record<string, unknown> = {};
+      try {
+        extraction_spec = JSON.parse(form.extraction_spec || '{}');
+      } catch {
+        setSanitizerAiError('Invalid JSON in Extraction Spec');
+        setSanitizerAiLoading(false);
+        return;
+      }
+
+      const url = verifyUrl.trim();
+      if (!url) {
+        setSanitizerAiError('Enter a target URL first (use the Verify section above)');
+        setSanitizerAiLoading(false);
+        return;
+      }
+
+      const res = await aiApi.suggestSanitizer({
+        url,
+        extraction_spec,
+        description: sanitizerAiDescription || undefined,
+        scraper_profile: form.scraper_profile,
+      });
+      setSanitizerAiResult(res);
+    } catch (err) {
+      setSanitizerAiError(err instanceof Error ? err.message : 'AI sanitizer generation failed');
+    }
+    setSanitizerAiLoading(false);
+  }
+
+  async function handleApplySanitizer() {
+    if (!sanitizerAiResult) return;
+    try {
+      // Create the sanitizer config
+      const created = await sanitizerConfigsApi.create({
+        name: `Sanitizer for ${form.name || 'config'}`,
+        description: `Auto-generated sanitizer`,
+        is_active: true,
+        rules: sanitizerAiResult.rules,
+      });
+      // Select it in the form
+      setForm((prev) => ({ ...prev, sanitizer_config_id: created.id }));
+      // Refresh the sanitizer configs list
+      const res = await sanitizerConfigsApi.list(0, 200, true);
+      setSanitizerConfigs(res.items);
+      setSanitizerAiResult(null);
+    } catch (err) {
+      setSanitizerAiError(err instanceof Error ? err.message : 'Failed to create sanitizer config');
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -167,6 +238,7 @@ export default function ConfigCreate() {
         rotate_user_agent: form.rotate_user_agent,
         custom_delay: form.custom_delay ? parseFloat(form.custom_delay) : null,
         max_concurrent: form.max_concurrent ? parseInt(form.max_concurrent) : null,
+        sanitizer_config_id: form.sanitizer_config_id || null,
         is_active: form.is_active,
         extraction_spec,
         fetch_options,
@@ -244,6 +316,20 @@ export default function ConfigCreate() {
               >
                 {PROFILES.map((p) => (
                   <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Sanitizer Config</label>
+              <select
+                className="form-input form-select"
+                value={form.sanitizer_config_id}
+                onChange={(e) => updateField('sanitizer_config_id', e.target.value)}
+              >
+                <option value="">None</option>
+                {sanitizerConfigs.map((sc) => (
+                  <option key={sc.id} value={sc.id}>{sc.name} ({sc.rules.length} rules)</option>
                 ))}
               </select>
             </div>
@@ -624,6 +710,98 @@ export default function ConfigCreate() {
                           >
                             Retry with AI refinement
                           </button>
+                        </div>
+                      )}
+
+                      {/* Generate Sanitizer with AI */}
+                      {verifyResult.extracted_data && Object.keys(verifyResult.extracted_data).length > 0 && aiAvailable && (
+                        <div style={{ marginTop: 16, borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Sanitize Extracted Data</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— AI-generate rules to clean up field values</span>
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 12 }}>
+                            <label className="form-label" style={{ fontSize: '0.8rem' }}>What should be sanitized?</label>
+                            <textarea
+                              className="form-input"
+                              value={sanitizerAiDescription}
+                              onChange={(e) => setSanitizerAiDescription(e.target.value)}
+                              rows={2}
+                              placeholder="e.g. Price fields contain currency symbols like $18.99 USD, titles have extra whitespace"
+                              style={{ resize: 'vertical' }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={handleGenerateSanitizer}
+                            disabled={sanitizerAiLoading || !verifyUrl.trim()}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              fontSize: '0.8rem', width: '100%', justifyContent: 'center',
+                              color: sanitizerAiResult ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                              border: sanitizerAiResult ? '1px solid var(--accent-primary-dim)' : '1px solid var(--border-color)',
+                              background: sanitizerAiResult ? 'var(--accent-primary-dim)' : 'transparent',
+                            }}
+                          >
+                            {sanitizerAiLoading ? (
+                              <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Generating sanitizer...</>
+                            ) : (
+                              <><IconSparkle size={14} /> Generate Sanitizer with AI</>
+                            )}
+                          </button>
+                          {sanitizerAiError && (
+                            <div style={{ marginTop: 8, color: 'var(--status-failed)', fontSize: '0.8rem' }}>{sanitizerAiError}</div>
+                          )}
+                          {sanitizerAiResult && (
+                            <div style={{ marginTop: 12 }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
+                                AI suggested {sanitizerAiResult.rules.length} rule{sanitizerAiResult.rules.length !== 1 ? 's' : ''}
+                              </div>
+                              {sanitizerAiResult.rules.map((rule, i) => (
+                                <div key={i} style={{ padding: '6px 10px', marginBottom: 4, background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem' }}>
+                                  <span style={{ color: 'var(--accent-primary)', fontWeight: 500 }}>{rule.field}</span>
+                                  {' → '}
+                                  {rule.transforms.map((t, j) => (
+                                    <span key={j} style={{ color: 'var(--text-muted)' }}>
+                                      {j > 0 && ' → '}{t.type}
+                                      {t.type === 'regex_replace' && <span>({t.pattern})</span>}
+                                      {t.type === 'default' && <span>({t.value})</span>}
+                                    </span>
+                                  ))}
+                                </div>
+                              ))}
+                              {sanitizerAiResult.sample_before && sanitizerAiResult.sample_after && (
+                                <details style={{ marginTop: 8 }}>
+                                  <summary style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                    Before / After comparison
+                                  </summary>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                                    <div>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>Before:</div>
+                                      <pre style={{ background: 'var(--bg-primary)', padding: 8, borderRadius: 'var(--radius-sm)', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', maxHeight: 150, overflow: 'auto' }}>
+                                        {JSON.stringify(sanitizerAiResult.sample_before, null, 2)}
+                                      </pre>
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>After:</div>
+                                      <pre style={{ background: 'var(--bg-primary)', padding: 8, borderRadius: 'var(--radius-sm)', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', maxHeight: 150, overflow: 'auto' }}>
+                                        {JSON.stringify(sanitizerAiResult.sample_after, null, 2)}
+                                      </pre>
+                                    </div>
+                                  </div>
+                                </details>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleApplySanitizer}
+                                style={{ marginTop: 12, width: '100%', justifyContent: 'center', fontSize: '0.8rem' }}
+                              >
+                                <IconPlus size={14} /> Create & Select This Sanitizer
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

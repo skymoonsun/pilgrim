@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import activities, ai, crawl, crawl_configs, health, proxy_sources, proxies, schedules, scrape
+from app.api.v1.endpoints import activities, ai, crawl, crawl_configs, health, proxy_sources, proxies, sanitizer_configs, schedules, scrape
 
 api_router = APIRouter()
 
@@ -32,4 +32,7 @@ api_router.include_router(
 )
 api_router.include_router(
     activities.router, prefix="/activities", tags=["activities"]
+)
+api_router.include_router(
+    sanitizer_configs.router, prefix="/sanitizer-configs", tags=["sanitizer-configs"]
 )

@@ -159,3 +159,13 @@ class ProxyNotFoundError(AppException):
             f"ValidProxy with ID {proxy_id} not found",
             "PROXY_NOT_FOUND",
         )
+
+
+class SanitizerConfigNotFoundError(AppException):
+    """Raised when a sanitizer config is not found."""
+
+    def __init__(self, config_id: str) -> None:
+        super().__init__(
+            f"SanitizerConfig with ID {config_id} not found",
+            "SANITIZER_CONFIG_NOT_FOUND",
+        )

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ConfigNotFoundError
 from app.models.crawl_config import CrawlConfiguration
@@ -28,15 +29,17 @@ class CrawlConfigService:
         self.session.add(config)
         await self.session.commit()
         await self.session.refresh(config)
+        # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
+        config = await self.get_by_id(config.id)
         logger.info("Created crawl config: %s (%s)", config.id, config.name)
         return config
 
     async def get_by_id(self, config_id: UUID) -> CrawlConfiguration:
         """Get a configuration by ID or raise ``ConfigNotFoundError``."""
         result = await self.session.execute(
-            select(CrawlConfiguration).where(
-                CrawlConfiguration.id == config_id
-            )
+            select(CrawlConfiguration)
+            .options(selectinload(CrawlConfiguration.sanitizer_config))
+            .where(CrawlConfiguration.id == config_id)
         )
         config = result.scalar_one_or_none()
         if config is None:
@@ -82,7 +85,8 @@ class CrawlConfigService:
         for field, value in update_data.items():
             setattr(config, field, value)
         await self.session.commit()
-        await self.session.refresh(config)
+        # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
+        config = await self.get_by_id(config_id)
         logger.info("Updated crawl config: %s", config.id)
         return config
 

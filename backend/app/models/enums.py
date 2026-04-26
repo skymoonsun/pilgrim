@@ -67,6 +67,22 @@ class ProxyHealthStatus(str, Enum):
     UNHEALTHY = "unhealthy"
 
 
+class TransformType(str, Enum):
+    """Available transform operations for sanitizer rules."""
+
+    STRIP = "strip"
+    TO_LOWER = "to_lower"
+    TO_UPPER = "to_upper"
+    TO_NUMBER = "to_number"
+    TO_INT = "to_int"
+    REGEX_REPLACE = "regex_replace"
+    EXTRACT_NUMBER = "extract_number"
+    TRIM_PREFIX = "trim_prefix"
+    TRIM_SUFFIX = "trim_suffix"
+    DEFAULT = "default"
+    SPLIT_TAKE = "split_take"
+
+
 class ScheduleType(str, Enum):
     """Type of schedule — determines what gets triggered."""
 

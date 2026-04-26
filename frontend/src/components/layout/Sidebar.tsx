@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { IconDashboard, IconConfig, IconCalendar, IconFlask, IconClipboard, IconGlobe, IconShield, IconSettings } from '../icons/Icons';
+import { IconDashboard, IconConfig, IconCalendar, IconFlask, IconClipboard, IconGlobe, IconShield, IconFilter, IconSettings } from '../icons/Icons';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: <IconDashboard size={18} /> },
   { to: '/configurations', label: 'Configurations', icon: <IconConfig size={18} /> },
+  { to: '/sanitizer-configs', label: 'Sanitizers', icon: <IconFilter size={18} /> },
   { to: '/schedules', label: 'Schedules', icon: <IconCalendar size={18} /> },
   { to: '/scrape', label: 'Scrape Playground', icon: <IconFlask size={18} /> },
   { to: '/jobs', label: 'Jobs', icon: <IconClipboard size={18} /> },

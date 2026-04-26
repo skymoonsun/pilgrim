@@ -290,3 +290,58 @@ class SpecVerificationResponse(BaseModel):
         default=None,
         description="Warning about page fetching issues (e.g. empty page, JS-rendered content)",
     )
+
+
+# ── Sanitizer suggestion schemas ─────────────────────────────────
+
+
+class SanitizerSuggestionRequest(BaseModel):
+    """Request body for AI-powered sanitizer rule generation."""
+
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Target URL to extract sample data from",
+    )
+    extraction_spec: dict = Field(
+        ...,
+        description="Extraction spec to use for extracting sample data",
+    )
+    description: str | None = Field(
+        None,
+        max_length=2000,
+        description="What kind of sanitization is needed (e.g. 'clean up prices, remove currency symbols')",
+    )
+    scraper_profile: str = Field(
+        default="fetcher",
+        description="Scraper profile to use for fetching",
+    )
+
+
+class SanitizerSuggestionSchema(BaseModel):
+    """LLM structured output schema for sanitizer suggestions."""
+
+    rules: list[dict] = Field(
+        ...,
+        description="List of sanitizer rules, each with 'field' and 'transforms' keys",
+    )
+
+
+class SanitizerSuggestionResponse(BaseModel):
+    """Response from the AI sanitizer suggestion endpoint."""
+
+    rules: list[dict] = Field(
+        ..., description="Suggested sanitizer rules"
+    )
+    sample_before: dict | None = Field(
+        default=None,
+        description="Extracted data before sanitization",
+    )
+    sample_after: dict | None = Field(
+        default=None,
+        description="Extracted data after applying suggested rules",
+    )
+    model_used: str = Field(
+        ..., description="LLM model that produced the suggestion"
+    )

@@ -115,6 +115,7 @@ export default function ConfigDetail() {
             <DetailRow label="Rotate UA" value={config.rotate_user_agent ? 'Yes' : 'No'} />
             <DetailRow label="Custom Delay" value={config.custom_delay ? `${config.custom_delay}s` : '—'} />
             <DetailRow label="Max Concurrent" value={config.max_concurrent?.toString() || '—'} />
+            <DetailRow label="Sanitizer" value={config.sanitizer_config ? config.sanitizer_config.name : '—'} />
             <DetailRow label="Created" value={new Date(config.created_at).toLocaleString()} />
             <DetailRow label="Updated" value={new Date(config.updated_at).toLocaleString()} />
           </div>

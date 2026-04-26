@@ -25,7 +25,9 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 ## ✨ Features
 
 - **Config-driven scraping** — Define extraction rules (CSS/XPath selectors) once, reuse across multiple URLs
+- **Data sanitizers** — Reusable post-processing rules to clean up extracted values (strip currency symbols, normalize whitespace, convert types)
 - **AI-powered config generation** — Describe what to extract in natural language; AI generates the selectors for you
+- **AI-powered sanitizer generation** — Let AI suggest sanitizer rules based on sample extracted data
 - **Proxy management** — Fetch, parse, validate, and rotate proxies from configurable sources with health monitoring
 - **Manual proxy support** — Add paid/custom proxies individually or in bulk; they persist until deleted
 - **AI-powered proxy source analysis** — Paste a proxy list URL and let AI detect the format and suggest extraction settings
@@ -104,6 +106,7 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | **Configurations** | `/configurations` | Manage crawl configs (CRUD) |
 | **Scrape Playground** | `/scrape` | Test configs with real URLs (live) |
 | **Jobs** | `/jobs` | Monitor async crawl jobs |
+| **Sanitizers** | `/sanitizer-configs` | Manage sanitizer configs (CRUD) + AI generation |
 | **Proxy Sources** | `/proxy-sources` | Manage proxy list sources (CRUD) |
 | **Proxies** | `/proxies` | View and filter validated proxies |
 | **Settings** | `/settings` | Application configuration |
@@ -141,7 +144,13 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | `POST` | `/api/v1/ai/generate-spec` | Generate extraction spec via AI |
 | `POST` | `/api/v1/ai/verify-spec` | Verify extraction spec against a URL |
 | `POST` | `/api/v1/ai/suggest-proxy-source` | AI-analyze a proxy source URL |
+| `POST` | `/api/v1/ai/suggest-sanitizer` | AI-generate sanitizer rules from URL + extraction spec |
 | `GET` | `/api/v1/ai/status` | Check AI feature availability |
+| `POST` | `/api/v1/sanitizer-configs/` | Create a sanitizer config |
+| `GET` | `/api/v1/sanitizer-configs/` | List sanitizer configs (`?active_only=true`) |
+| `GET` | `/api/v1/sanitizer-configs/{id}` | Get sanitizer config by ID |
+| `PATCH` | `/api/v1/sanitizer-configs/{id}` | Update a sanitizer config |
+| `DELETE` | `/api/v1/sanitizer-configs/{id}` | Delete a sanitizer config |
 | `POST` | `/api/v1/proxy-sources/` | Create a proxy source config |
 | `GET` | `/api/v1/proxy-sources/` | List all proxy source configs |
 | `GET` | `/api/v1/proxy-sources/{id}` | Get proxy source by ID |
@@ -204,13 +213,15 @@ pilgrim/
 │   ├── src/
 │   │   ├── api/                # Typed API client
 │   │   ├── components/         # Layout (Sidebar, Header) + Icons
-│   │   ├── pages/              # Dashboard, Configurations, Scrape, Jobs, ProxySources, Proxies, Settings
+│   │   ├── pages/              # Dashboard, Configurations, Scrape, Jobs, Schedules, ProxySources, Proxies, Sanitizers, Settings
 │   │   ├── App.tsx             # React Router setup
 │   │   └── index.css           # Design system (CSS variables, dark theme)
 │   ├── Dockerfile              # Node 22 Alpine + Vite dev server
 │   └── vite.config.ts          # API proxy to backend
 ├── docs/
 │   ├── crawl-configs.md        # Crawl configuration guide
+│   ├── sanitizer-configs.md    # Sanitizer configs & transform reference
+│   ├── proxy-management.md     # Proxy management guide
 │   └── assets/
 ├── docker-compose.dev.yml      # Full dev stack (6 services)
 ├── docker-compose.yml          # Production (external DB & Redis)
@@ -330,6 +341,27 @@ No changes to the service or API layer are needed.
 ### Scraper profile selection
 
 The AI endpoint accepts an optional `scraper_profile` parameter. Use `fetcher` (default) for static pages or `http_session` for sites requiring cookies. The `stealth` and `dynamic` profiles require browser binaries that are only available in the worker container.
+
+### AI-powered sanitizer generation
+
+The AI can also suggest sanitizer rules based on sample extracted data. After creating a crawl config and verifying its extraction spec, use the suggest-sanitizer endpoint:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ai/suggest-sanitizer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://store.example.com/product/123",
+    "extraction_spec": {
+      "fields": {
+        "price": {"selector": ".price::text", "type": "css"},
+        "title": {"selector": "h1::text", "type": "css"}
+      }
+    },
+    "description": "Price fields contain currency symbols, titles have extra whitespace"
+  }'
+```
+
+The response includes suggested `rules`, `sample_before` (raw data), and `sample_after` (cleaned data). See the [Sanitizer Configs Guide](docs/sanitizer-configs.md) for transform types and examples.
 
 ## 🔌 Proxy Management
 
@@ -465,6 +497,7 @@ Two Compose files are provided:
 ## 📚 Documentation
 
 - [Crawl Configurations Guide](docs/crawl-configs.md) — Extraction specs, scraper profiles, fetch options, and real-world examples
+- [Sanitizer Configs Guide](docs/sanitizer-configs.md) — Transform types, AI-powered generation, and usage examples
 - [Proxy Management Guide](docs/proxy-management.md) — Proxy sources, formats, validation, manual proxies, AI analysis, and rotation
 
 ## License

@@ -45,6 +45,9 @@ class CrawlConfigCreate(BaseModel):
     max_concurrent: int | None = Field(
         None, ge=1, description="Max concurrent requests"
     )
+    sanitizer_config_id: UUID | None = Field(
+        None, description="Optional sanitizer config to apply after extraction"
+    )
     is_active: bool = True
 
 
@@ -63,6 +66,7 @@ class CrawlConfigUpdate(BaseModel):
     custom_headers: dict | None = None
     custom_delay: Decimal | None = None
     max_concurrent: int | None = None
+    sanitizer_config_id: UUID | None = None
     is_active: bool | None = None
 
 
@@ -84,6 +88,8 @@ class CrawlConfigResponse(BaseModel):
     custom_headers: dict | None
     custom_delay: Decimal | None
     max_concurrent: int | None
+    sanitizer_config_id: UUID | None
+    sanitizer_config: "SanitizerConfigResponse | None" = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -95,3 +101,9 @@ class CrawlConfigListResponse(BaseModel):
 
     items: list[CrawlConfigResponse]
     total: int
+
+
+# ── Import for forward reference ────────────────────────────────
+from app.schemas.sanitizer_config import SanitizerConfigResponse  # noqa: E402
+
+CrawlConfigResponse.model_rebuild()

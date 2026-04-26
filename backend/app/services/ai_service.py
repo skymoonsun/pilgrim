@@ -41,6 +41,8 @@ from app.schemas.ai import (
     ProxySourceSuggestionResponse,
     ProxySourceSuggestionSchema,
     ProxySourceVerifyResult,
+    SanitizerSuggestionResponse,
+    SanitizerSuggestionSchema,
     SpecVerificationResponse,
 )
 from app.services.ai_prompts import (
@@ -473,6 +475,113 @@ class AIService:
             iterations_performed=iterations,
             model_used=model_used,
             page_warning=page_warning,
+        )
+
+    # ── Sanitizer suggestion API ────────────────────────────────────
+
+    async def suggest_sanitizer(
+        self,
+        url: str,
+        extraction_spec: dict,
+        description: str | None = None,
+        scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+    ) -> "SanitizerSuggestionResponse":
+        """Analyze extracted data and suggest sanitizer rules.
+
+        1. Fetch the page and extract data using the given extraction_spec.
+        2. Send raw extracted values + description to the LLM.
+        3. LLM returns suggested sanitizer rules.
+        4. Apply suggested rules to show before/after.
+        """
+        from app.schemas.ai import SanitizerSuggestionResponse, SanitizerSuggestionSchema
+        from app.schemas.sanitizer_config import FieldSanitizer
+        from app.services.sanitizer import apply_sanitizer
+
+        settings = get_settings()
+        if not settings.ai_enabled:
+            raise AIDisabledError()
+
+        # 1. Fetch page and extract data
+        html = self._fetch_page_html(url, scraper_profile)
+        sanitize_result = sanitize_html(html)
+
+        from app.crawlers.factory import create_fetcher
+        from app.crawlers.extraction import extract_data
+
+        response = create_fetcher(
+            profile=scraper_profile,
+            fetch_options={},
+        ).get(url)
+
+        next_data = None
+        json_ld = None
+        fields = extraction_spec.get("fields", {}) if extraction_spec else {}
+        if any(
+            f.get("type") == "json_path" for f in fields.values() if isinstance(f, dict)
+        ):
+            if sanitize_result.next_data:
+                next_data = sanitize_result.next_data
+            if sanitize_result.json_ld:
+                json_ld = sanitize_result.json_ld
+
+        data = extract_data(
+            response, extraction_spec,
+            next_data=next_data, json_ld=json_ld,
+        )
+
+        # 2. Build LLM prompt with raw extracted data
+        import json
+
+        data_preview = json.dumps(data, ensure_ascii=False, default=str)
+        if len(data_preview) > 4000:
+            data_preview = data_preview[:4000] + "\n...(truncated)"
+
+        desc_section = ""
+        if description:
+            desc_section = f"\nUser's sanitization goal: {description}\n"
+
+        prompt = (
+            "You are a data sanitization expert. Given the following extracted data from a web page, "
+            "suggest sanitizer rules to clean and normalize the field values.\n\n"
+            "Available transform types:\n"
+            "- strip: Remove leading/trailing whitespace\n"
+            "- to_lower: Convert to lowercase\n"
+            "- to_upper: Convert to uppercase\n"
+            "- to_number: Extract numeric value (removes currency symbols, etc.)\n"
+            "- to_int: Extract integer value\n"
+            "- regex_replace: Replace text matching a regex pattern (requires 'pattern' and 'replacement')\n"
+            "- extract_number: Extract the first number found in the string\n"
+            "- trim_prefix: Remove a specific prefix string (requires 'value')\n"
+            "- trim_suffix: Remove a specific suffix string (requires 'value')\n"
+            "- default: Set a default value if the field is empty/null (requires 'value')\n"
+            "- split_take: Split by separator and take element at index (requires 'pattern' as separator and 'index')\n\n"
+            f"Extracted data:\n{data_preview}\n"
+            f"{desc_section}\n"
+            "Return a JSON object with a 'rules' key containing an array of sanitizer rules. "
+            "Each rule has 'field' (the field name from the data) and 'transforms' (an array of transform objects). "
+            "Only include rules for fields that actually need sanitization. "
+            "Each transform object has 'type' and optional 'pattern', 'replacement', 'value', 'index' fields depending on the transform type."
+        )
+
+        # 3. Call LLM
+        provider = await self._get_provider()
+        llm_result: SanitizerSuggestionSchema = await provider.generate(
+            prompt=prompt,
+            schema=SanitizerSuggestionSchema,
+            system=SYSTEM_PROMPT,
+        )
+
+        rules_data = llm_result.rules
+        rules = [FieldSanitizer(**r) for r in rules_data]
+
+        # 4. Apply suggested rules to show before/after
+        sample_after = apply_sanitizer(dict(data), rules) if rules else dict(data)
+
+        return SanitizerSuggestionResponse(
+            rules=rules_data,
+            sample_before=data,
+            sample_after=sample_after,
+            model_used=getattr(provider, "_model", "unknown"),
         )
 
     # ── Internal helpers ────────────────────────────────────────

@@ -1,9 +1,10 @@
 """CrawlConfiguration model — the scraping recipe."""
 
 from decimal import Decimal
+from uuid import UUID
 
-from sqlalchemy import Boolean, Enum as SQLEnum, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -68,11 +69,22 @@ class CrawlConfiguration(Base, UUIDMixin, TimestampMixin):
         Integer, nullable=True
     )
 
+    # ── Sanitizer ────────────────────────────────────────────────
+    sanitizer_config_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("sanitizer_configs.id"),
+        nullable=True,
+        index=True,
+    )
+
     # ── Relationships ────────────────────────────────────────────
     crawl_jobs: Mapped[list["CrawlJob"]] = relationship(
         "CrawlJob",
         back_populates="crawl_configuration",
         cascade="all, delete-orphan",
+    )
+    sanitizer_config: Mapped["SanitizerConfig | None"] = relationship(
+        "SanitizerConfig",
     )
 
     def __repr__(self) -> str:
