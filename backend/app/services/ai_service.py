@@ -35,12 +35,15 @@ from app.integrations.llm_base import LLMProvider, create_llm_provider
 from app.models.enums import ScraperProfile
 from app.schemas.ai import (
     AIStatusResponse,
+    ChatMessage,
+    ChatUrlContext,
     ExtractionSpecAIResponse,
     ExtractionSpecSchema,
     FieldVerificationResult,
     ProxySourceSuggestionResponse,
     ProxySourceSuggestionSchema,
     ProxySourceVerifyResult,
+    RefineSpecChatResponse,
     SanitizerSuggestionResponse,
     SanitizerSuggestionSchema,
     SpecVerificationResponse,
@@ -48,6 +51,7 @@ from app.schemas.ai import (
 from app.services.ai_prompts import (
     GENERATE_SPEC_PROMPT,
     PROXY_SOURCE_SUGGESTION_PROMPT,
+    REFINE_SPEC_CHAT_PROMPT,
     REFINE_SPEC_PROMPT,
     SYSTEM_PROMPT,
 )
@@ -290,6 +294,132 @@ class AIService:
             format_type=format_type,
             content_length=len(content),
             suggested_max_proxies=suggested,
+        )
+
+    # ── Chat-based refinement API ───────────────────────────────────
+
+    async def refine_spec_chat(
+        self,
+        messages: list[ChatMessage],
+        urls: list[str],
+        current_spec: dict | None,
+        scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+    ) -> RefineSpecChatResponse:
+        """Chat-based spec refinement with conversation history and multiple URLs.
+
+        Fetches HTML for all provided URLs, builds a prompt from the
+        conversation history plus structured page context, and asks the LLM
+        to generate or refine the extraction spec.
+        """
+        import json as _json
+
+        settings = get_settings()
+        if not settings.ai_enabled:
+            raise AIDisabledError()
+
+        # Determine if this is initial generation or refinement
+        is_initial = current_spec is None or not current_spec.get("fields")
+
+        # 1. Fetch HTML for all URLs
+        html_pages: list[tuple[str, str]] = []
+        url_contexts: list[ChatUrlContext] = []
+        for url in urls:
+            html = self._fetch_page_html(url, scraper_profile)
+            html_pages.append((url, html))
+
+        # 2. Sanitize each page and build context
+        max_chars_per_url = settings.ai_max_html_chars // max(len(urls), 1)
+        all_sanitized: list[str] = []
+        all_json_ld: list[str] = []
+        all_next_data: list[str] = []
+        all_value_contexts: list[str] = []
+
+        for url, html in html_pages:
+            sanitize_result = sanitize_html(html)
+            url_contexts.append(ChatUrlContext(
+                url=url,
+                html_length=sanitize_result.original_length,
+                sanitized_length=len(sanitize_result.html),
+            ))
+            sanitized = truncate_html(sanitize_result.html, max_chars_per_url)
+            all_sanitized.append(f"### HTML from {url}\n{sanitized}")
+            all_json_ld.append(self._build_json_ld_section(sanitize_result.json_ld))
+            all_next_data.append(self._build_next_data_section(sanitize_result.next_data))
+
+        combined_html = "\n\n".join(all_sanitized)
+        combined_json_ld = "\n".join(s for s in all_json_ld if s)
+        combined_next_data = "\n".join(s for s in all_next_data if s)
+        json_ld_context = combined_json_ld + combined_next_data
+
+        # 3. Build conversation history text
+        conversation_lines = []
+        for msg in messages:
+            prefix = "User" if msg.role == "user" else "Assistant"
+            conversation_lines.append(f"## {prefix}\n{msg.content}")
+        conversation_history = "\n\n".join(conversation_lines)
+
+        # 4. Find value contexts from last user message
+        last_user_msg = next(
+            (m.content for m in reversed(messages) if m.role == "user"),
+            "",
+        )
+        for _url, html in html_pages:
+            all_value_contexts.append(
+                self._find_value_contexts(html, last_user_msg)
+            )
+        value_context = "\n".join(s for s in all_value_contexts if s)
+
+        # 5. Choose prompt template and call LLM
+        current_spec_text = _json.dumps(
+            current_spec or {}, indent=2, ensure_ascii=False,
+        )
+
+        if is_initial:
+            # Initial generation: use existing GENERATE_SPEC_PROMPT
+            prompt = GENERATE_SPEC_PROMPT.format(
+                description=last_user_msg,
+                html=combined_html,
+                json_ld_context=json_ld_context + value_context,
+            )
+        else:
+            # Refinement: use REFINE_SPEC_CHAT_PROMPT
+            prompt = REFINE_SPEC_CHAT_PROMPT.format(
+                current_spec=current_spec_text,
+                conversation_history=conversation_history,
+                html_context=combined_html,
+                json_ld_context=json_ld_context + value_context,
+            )
+
+        provider = await self._get_provider()
+        llm_result: ExtractionSpecSchema = await provider.generate(  # type: ignore[assignment]
+            prompt=prompt,
+            schema=ExtractionSpecSchema,
+            system=SYSTEM_PROMPT,
+        )
+
+        # 6. Validate
+        self._validate_spec(llm_result)
+
+        # 7. Generate a short human-readable assistant message
+        field_names = list(llm_result.fields.keys())
+        if is_initial:
+            assistant_message = (
+                f"Generated extraction spec with {len(field_names)} field"
+                f"{'s' if len(field_names) != 1 else ''}: "
+                + ", ".join(field_names)
+            )
+        else:
+            assistant_message = (
+                f"Refined spec — {len(field_names)} field"
+                f"{'s' if len(field_names) != 1 else ''}: "
+                + ", ".join(field_names)
+            )
+
+        return RefineSpecChatResponse(
+            extraction_spec=llm_result.model_dump(),
+            model_used=getattr(provider, "_model", "unknown"),
+            url_contexts=url_contexts,
+            assistant_message=assistant_message,
         )
 
     # ── Verification API ────────────────────────────────────────────

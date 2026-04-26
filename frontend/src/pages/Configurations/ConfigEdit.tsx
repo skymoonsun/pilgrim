@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { configsApi, sanitizerConfigsApi } from '../../api/client';
-import type { CrawlConfig, SanitizerConfig } from '../../api/client';
+import { configsApi, aiApi, sanitizerConfigsApi } from '../../api/client';
+import type { CrawlConfig, SanitizerConfig, SpecVerificationResponse, SanitizerSuggestionResponse } from '../../api/client';
 import { IconConfig } from '../../components/icons/Icons';
+import { toast } from '../../components/ui/Toast';
+import ChatPanel from '../../components/ChatPanel/ChatPanel';
 
 const PROFILES = ['fetcher', 'http_session', 'stealth', 'dynamic', 'spider'];
 
@@ -30,6 +32,9 @@ export default function ConfigEdit() {
 
   const [sanitizerConfigs, setSanitizerConfigs] = useState<SanitizerConfig[]>([]);
 
+  // AI availability check
+  const [aiAvailable, setAiAvailable] = useState(false);
+
   useEffect(() => {
     sanitizerConfigsApi.list(0, 200, true).then((res) => {
       setSanitizerConfigs(res.items);
@@ -39,6 +44,14 @@ export default function ConfigEdit() {
   useEffect(() => {
     if (id) loadConfig(id);
   }, [id]);
+
+  useEffect(() => {
+    aiApi.status().then((res) => {
+      setAiAvailable(res.enabled && res.reachable);
+    }).catch(() => {
+      setAiAvailable(false);
+    });
+  }, []);
 
   async function loadConfig(configId: string) {
     setLoading(true);
@@ -66,6 +79,39 @@ export default function ConfigEdit() {
 
   function updateField(field: string, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleApplySpec(spec: Record<string, unknown>) {
+    setForm((prev) => ({
+      ...prev,
+      extraction_spec: JSON.stringify(spec, null, 2),
+    }));
+  }
+
+  async function handleVerifySpec(url: string, spec: Record<string, unknown>): Promise<SpecVerificationResponse> {
+    const res = await aiApi.verifySpec({
+      url,
+      extraction_spec: spec,
+      scraper_profile: form.scraper_profile,
+      max_iterations: 2,
+    });
+    if (res.refined_spec) {
+      setForm((prev) => ({
+        ...prev,
+        extraction_spec: JSON.stringify(res.refined_spec, null, 2),
+      }));
+    }
+    return res;
+  }
+
+  async function handleSuggestSanitizer(url: string, spec: Record<string, unknown>, description?: string): Promise<SanitizerSuggestionResponse> {
+    const res = await aiApi.suggestSanitizer({
+      url,
+      extraction_spec: spec,
+      description,
+      scraper_profile: form.scraper_profile,
+    });
+    return res;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -112,6 +158,7 @@ export default function ConfigEdit() {
       };
 
       await configsApi.update(id, payload);
+      toast.success('Configuration updated');
       navigate(`/configurations/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
@@ -134,6 +181,12 @@ export default function ConfigEdit() {
       </div>
     );
   }
+
+  // Parse current extraction spec for ChatPanel
+  let currentSpec: Record<string, unknown> | null = null;
+  try {
+    currentSpec = form.extraction_spec ? JSON.parse(form.extraction_spec) : null;
+  } catch { /* invalid JSON, pass null */ }
 
   return (
     <div className="animate-in">
@@ -160,9 +213,10 @@ export default function ConfigEdit() {
 
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-          {/* Left */}
+          {/* Left column */}
           <div className="card" style={{ padding: 28 }}>
             <h3 className="card-title" style={{ marginBottom: 20 }}>General</h3>
+
             <div className="form-group">
               <label className="form-label">Name *</label>
               <input type="text" className="form-input" value={form.name}
@@ -219,15 +273,29 @@ export default function ConfigEdit() {
             </div>
           </div>
 
-          {/* Right */}
+          {/* Right column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div className="card" style={{ padding: 28, flex: 1 }}>
-              <h3 className="card-title" style={{ marginBottom: 20 }}>Extraction Spec *</h3>
+              <h3 className="card-title" style={{ marginBottom: 16 }}>Extraction Spec *</h3>
+
               <textarea className="form-input" value={form.extraction_spec}
                 onChange={(e) => updateField('extraction_spec', e.target.value)}
                 rows={8} required
                 style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical', whiteSpace: 'pre' }} />
+
+              {aiAvailable && id && (
+                <ChatPanel
+                  configId={id}
+                  scraperProfile={form.scraper_profile}
+                  initialSpec={currentSpec}
+                  configName={form.name}
+                  onApplySpec={handleApplySpec}
+                  onVerifySpec={handleVerifySpec}
+                  onSuggestSanitizer={handleSuggestSanitizer}
+                />
+              )}
             </div>
+
             <div className="card" style={{ padding: 28 }}>
               <h3 className="card-title" style={{ marginBottom: 20 }}>Fetch Options (JSON)</h3>
               <textarea className="form-input" value={form.fetch_options}

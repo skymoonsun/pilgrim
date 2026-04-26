@@ -200,3 +200,50 @@ Rules:
 - You MUST respond with ONLY the JSON object. No other text.
 
 JSON response:"""
+
+# ── Chat-based spec refinement ──────────────────────────────────────
+
+REFINE_SPEC_CHAT_PROMPT = """\
+You are helping a user refine an extraction specification for web scraping.
+
+## Current Extraction Spec
+{current_spec}
+
+## Conversation History
+{conversation_history}
+
+## HTML Context from Provided URLs
+{html_context}
+
+{json_ld_context}
+
+## Instructions
+Based on the conversation above and the HTML from the provided URLs, generate or refine an extraction specification.
+
+Rules:
+- Use CSS selectors by default (type: "css"). Use XPath only when CSS cannot express the selection.
+- Use "json_path" ONLY when structured data section contains the values you need and there are no matching visible DOM elements.
+- If using XPath, only XPath 1.0 is supported. Do NOT use XPath 2.0+ functions like substring-before, substring-after, or tokenize.
+- CRITICAL: CSS selectors MUST end with a pseudo-element to specify what to extract:
+  - Append ::text to extract the text content of an element (e.g. "h1.title::text", ".price::text")
+  - Append ::attr(name) to extract an attribute (e.g. "a.link::attr(href)", "img::attr(src)")
+  - NEVER return a bare element selector like ".price" — always add ::text or ::attr(...)
+  - For XPath, include /text() for text or /@attr for attributes as appropriate.
+- Do NOT target <script> tags with CSS/XPath to extract data — their JSON content cannot be parsed by CSS/XPath selectors.
+- Set "multiple": true when the field should capture all matching elements (e.g. list of prices, images).
+- Keep selectors concise and robust — prefer semantic classes and IDs over deep DOM paths.
+- Every field name must be a snake_case identifier.
+
+Respond with a JSON object matching this exact structure:
+{{
+  "fields": {{
+    "<field_name>": {{
+      "selector": "<CSS selector, XPath expression, or JSON path>",
+      "type": "css" or "xpath" or "json_path",
+      "multiple": true or false,
+      "source": "next_data" or "json_ld"  (only for type: "json_path")
+    }}
+  }}
+}}
+
+JSON response:"""

@@ -11,6 +11,8 @@ from app.schemas.ai import (
     ProxySourceSuggestionResponse,
     ProxySourceVerifyRequest,
     ProxySourceVerifyResult,
+    RefineSpecChatRequest,
+    RefineSpecChatResponse,
     SanitizerSuggestionRequest,
     SanitizerSuggestionResponse,
     SpecVerificationResponse,
@@ -74,6 +76,34 @@ async def verify_extraction_spec(
         scraper_profile=profile,
         fetch_options=body.fetch_options,
         max_iterations=body.max_iterations,
+    )
+
+
+@router.post(
+    "/refine-spec",
+    response_model=RefineSpecChatResponse,
+)
+async def refine_spec_chat(
+    body: RefineSpecChatRequest,
+) -> RefineSpecChatResponse:
+    """Chat-based extraction spec refinement with conversation history and multiple URLs.
+
+    Accepts a conversation history, one or more URLs, and the current
+    extraction_spec. Fetches each URL, builds context from all pages,
+    and asks the LLM to generate or refine the spec based on accumulated
+    conversation context.
+    """
+    try:
+        profile = ScraperProfile(body.scraper_profile)
+    except ValueError:
+        profile = ScraperProfile.FETCHER
+
+    service = AIService()
+    return await service.refine_spec_chat(
+        messages=body.messages,
+        urls=body.urls,
+        current_spec=body.current_spec,
+        scraper_profile=profile,
     )
 
 

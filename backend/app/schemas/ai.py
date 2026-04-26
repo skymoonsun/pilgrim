@@ -345,3 +345,68 @@ class SanitizerSuggestionResponse(BaseModel):
     model_used: str = Field(
         ..., description="LLM model that produced the suggestion"
     )
+
+
+# ── Chat-based refinement schemas ──────────────────────────────────
+
+
+class ChatMessage(BaseModel):
+    """A single message in the refinement conversation."""
+
+    role: Literal["user", "assistant"] = Field(
+        ..., description="Who sent the message"
+    )
+    content: str = Field(
+        ..., min_length=1, max_length=5000,
+        description="Message text",
+    )
+
+
+class RefineSpecChatRequest(BaseModel):
+    """Request body for chat-based spec refinement."""
+
+    messages: list[ChatMessage] = Field(
+        ..., min_length=1,
+        description="Conversation history (all prior messages + new user message)",
+    )
+    urls: list[str] = Field(
+        ..., min_length=1, max_length=5,
+        description="URLs to fetch and analyze (1-5)",
+    )
+    current_spec: dict | None = Field(
+        default=None,
+        description="Current extraction_spec to refine (null for initial generation)",
+    )
+    scraper_profile: str = Field(
+        default="fetcher",
+        description="Scraper profile to use for fetching",
+    )
+
+
+class ChatUrlContext(BaseModel):
+    """Context about a URL that was fetched for analysis."""
+
+    url: str = Field(..., description="The fetched URL")
+    html_length: int = Field(..., description="Original HTML size in characters")
+    sanitized_length: int = Field(
+        ..., description="Sanitized HTML size in characters"
+    )
+
+
+class RefineSpecChatResponse(BaseModel):
+    """Response from the chat-based spec refinement endpoint."""
+
+    extraction_spec: dict = Field(
+        ..., description="Generated or refined extraction_spec"
+    )
+    model_used: str = Field(
+        ..., description="LLM model that produced the spec"
+    )
+    url_contexts: list[ChatUrlContext] = Field(
+        default_factory=list,
+        description="Info about each fetched URL",
+    )
+    assistant_message: str = Field(
+        default="",
+        description="Human-readable summary of what was generated/changed",
+    )

@@ -479,11 +479,44 @@ export interface ProxySourceVerifyResult {
   error: string | null;
 }
 
+// ── Chat-based refinement ──────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatUrlContext {
+  url: string;
+  html_length: number;
+  sanitized_length: number;
+}
+
+export interface RefineSpecChatRequest {
+  messages: ChatMessage[];
+  urls: string[];
+  current_spec: Record<string, unknown> | null;
+  scraper_profile?: string;
+}
+
+export interface RefineSpecChatResponse {
+  extraction_spec: Record<string, unknown>;
+  model_used: string;
+  url_contexts: ChatUrlContext[];
+  assistant_message: string;
+}
+
 export const aiApi = {
   status: () => request<AIStatusResponse>('/ai/status'),
 
   generateSpec: (data: ExtractionSpecAIRequest) =>
     request<ExtractionSpecAIResponse>('/ai/generate-spec', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  refineSpecChat: (data: RefineSpecChatRequest) =>
+    request<RefineSpecChatResponse>('/ai/refine-spec', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

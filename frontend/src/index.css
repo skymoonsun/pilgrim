@@ -936,3 +936,111 @@ textarea.form-input {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(40px); }
 }
+
+/* ── Chat Panel ──────────────────────────────────────────── */
+
+.chat-panel {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-message {
+  display: flex;
+  max-width: 92%;
+  min-width: 0;
+}
+
+.chat-message--user {
+  align-self: flex-end;
+}
+
+.chat-message--assistant {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.chat-message--system {
+  align-self: center;
+  max-width: 100%;
+}
+
+.chat-message-content--user {
+  background: rgba(0, 128, 255, 0.15);
+  border: 1px solid rgba(0, 128, 255, 0.3);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.chat-message-content--assistant {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  backdrop-filter: blur(8px);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-message-content--system {
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px dashed rgba(0, 240, 255, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.chat-spec-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+.chat-spec-preview summary {
+  margin-bottom: 6px;
+}
+
+.chat-url-inputs {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-input-area {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
