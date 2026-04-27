@@ -28,6 +28,7 @@ export default function ConfigEdit() {
     extraction_spec: '',
     fetch_options: '',
     custom_headers: '',
+    cookies: '',
   });
 
   const [sanitizerConfigs, setSanitizerConfigs] = useState<SanitizerConfig[]>([]);
@@ -70,6 +71,7 @@ export default function ConfigEdit() {
         extraction_spec: config.extraction_spec ? JSON.stringify(config.extraction_spec, null, 2) : '',
         fetch_options: config.fetch_options ? JSON.stringify(config.fetch_options, null, 2) : '',
         custom_headers: config.custom_headers ? JSON.stringify(config.custom_headers, null, 2) : '',
+        cookies: config.cookies ? JSON.stringify(config.cookies, null, 2) : '',
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Config not found');
@@ -89,11 +91,18 @@ export default function ConfigEdit() {
   }
 
   async function handleVerifySpec(url: string, spec: Record<string, unknown>): Promise<SpecVerificationResponse> {
+    let headers: Record<string, string> | undefined;
+    try { headers = form.custom_headers?.trim() ? JSON.parse(form.custom_headers) : undefined; } catch { /* ignore */ }
+    let cookies: Record<string, string> | undefined;
+    try { cookies = form.cookies?.trim() ? JSON.parse(form.cookies) : undefined; } catch { /* ignore */ }
+
     const res = await aiApi.verifySpec({
       url,
       extraction_spec: spec,
       scraper_profile: form.scraper_profile,
       max_iterations: 2,
+      headers,
+      cookies,
     });
     if (res.refined_spec) {
       setForm((prev) => ({
@@ -105,11 +114,18 @@ export default function ConfigEdit() {
   }
 
   async function handleSuggestSanitizer(url: string, spec: Record<string, unknown>, description?: string): Promise<SanitizerSuggestionResponse> {
+    let headers: Record<string, string> | undefined;
+    try { headers = form.custom_headers?.trim() ? JSON.parse(form.custom_headers) : undefined; } catch { /* ignore */ }
+    let cookies: Record<string, string> | undefined;
+    try { cookies = form.cookies?.trim() ? JSON.parse(form.cookies) : undefined; } catch { /* ignore */ }
+
     const res = await aiApi.suggestSanitizer({
       url,
       extraction_spec: spec,
       description,
       scraper_profile: form.scraper_profile,
+      headers,
+      cookies,
     });
     return res;
   }
@@ -142,6 +158,12 @@ export default function ConfigEdit() {
         catch { setError('Invalid JSON in Custom Headers'); setSaving(false); return; }
       }
 
+      let cookies = null;
+      if (form.cookies.trim()) {
+        try { cookies = JSON.parse(form.cookies); }
+        catch { setError('Invalid JSON in Cookies'); setSaving(false); return; }
+      }
+
       const payload: Partial<CrawlConfig> = {
         name: form.name,
         description: form.description || null,
@@ -155,6 +177,7 @@ export default function ConfigEdit() {
         extraction_spec,
         fetch_options,
         custom_headers,
+        cookies,
       };
 
       await configsApi.update(id, payload);
@@ -187,6 +210,12 @@ export default function ConfigEdit() {
   try {
     currentSpec = form.extraction_spec ? JSON.parse(form.extraction_spec) : null;
   } catch { /* invalid JSON, pass null */ }
+
+  // Parse custom_headers and cookies for ChatPanel
+  let parsedHeaders: Record<string, string> | undefined;
+  try { parsedHeaders = form.custom_headers?.trim() ? JSON.parse(form.custom_headers) : undefined; } catch { /* ignore */ }
+  let parsedCookies: Record<string, string> | undefined;
+  try { parsedCookies = form.cookies?.trim() ? JSON.parse(form.cookies) : undefined; } catch { /* ignore */ }
 
   return (
     <div className="animate-in">
@@ -289,6 +318,8 @@ export default function ConfigEdit() {
                   scraperProfile={form.scraper_profile}
                   initialSpec={currentSpec}
                   configName={form.name}
+                  headers={parsedHeaders}
+                  cookies={parsedCookies}
                   onApplySpec={handleApplySpec}
                   onVerifySpec={handleVerifySpec}
                   onSuggestSanitizer={handleSuggestSanitizer}
@@ -308,6 +339,13 @@ export default function ConfigEdit() {
               <textarea className="form-input" value={form.custom_headers}
                 onChange={(e) => updateField('custom_headers', e.target.value)}
                 rows={3} placeholder='{"X-Custom": "value"}'
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical', whiteSpace: 'pre' }} />
+            </div>
+            <div className="card" style={{ padding: 28 }}>
+              <h3 className="card-title" style={{ marginBottom: 20 }}>Cookies (JSON)</h3>
+              <textarea className="form-input" value={form.cookies}
+                onChange={(e) => updateField('cookies', e.target.value)}
+                rows={3} placeholder='{"birthtime": "0", "wants_mature_content": "1"}'
                 style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical', whiteSpace: 'pre' }} />
             </div>
           </div>

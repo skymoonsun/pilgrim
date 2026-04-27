@@ -60,6 +60,9 @@ class CrawlConfiguration(Base, UUIDMixin, TimestampMixin):
     custom_headers: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True
     )
+    cookies: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     # ── Rate limiting ────────────────────────────────────────────
     custom_delay: Mapped[Decimal | None] = mapped_column(

@@ -46,6 +46,8 @@ async def generate_extraction_spec(
         url=body.url,
         description=body.description,
         scraper_profile=profile,
+        headers=body.headers,
+        cookies=body.cookies,
     )
 
 
@@ -76,6 +78,8 @@ async def verify_extraction_spec(
         scraper_profile=profile,
         fetch_options=body.fetch_options,
         max_iterations=body.max_iterations,
+        headers=body.headers,
+        cookies=body.cookies,
     )
 
 
@@ -104,6 +108,8 @@ async def refine_spec_chat(
         urls=body.urls,
         current_spec=body.current_spec,
         scraper_profile=profile,
+        headers=body.headers,
+        cookies=body.cookies,
     )
 
 
@@ -176,4 +182,6 @@ async def suggest_sanitizer(
         extraction_spec=body.extraction_spec,
         description=body.description,
         scraper_profile=profile,
+        headers=body.headers,
+        cookies=body.cookies,
     )

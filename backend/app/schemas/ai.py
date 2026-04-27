@@ -27,6 +27,14 @@ class ExtractionSpecAIRequest(BaseModel):
         default="fetcher",
         description="Scraper profile to use for fetching (fetcher, http_session, stealth, dynamic)",
     )
+    headers: dict | None = Field(
+        default=None,
+        description="Custom HTTP headers to send with the request",
+    )
+    cookies: dict | None = Field(
+        default=None,
+        description="Cookies to send with the request (name → value)",
+    )
 
 
 # ── LLM structured output schema ────────────────────────────────
@@ -121,6 +129,14 @@ class VerifySpecRequest(BaseModel):
         ge=0,
         le=5,
         description="Max LLM refinement iterations (0 = verify only, no LLM repair)",
+    )
+    headers: dict | None = Field(
+        default=None,
+        description="Custom HTTP headers to send with the request",
+    )
+    cookies: dict | None = Field(
+        default=None,
+        description="Cookies to send with the request (name → value)",
     )
 
 
@@ -317,6 +333,14 @@ class SanitizerSuggestionRequest(BaseModel):
         default="fetcher",
         description="Scraper profile to use for fetching",
     )
+    headers: dict | None = Field(
+        default=None,
+        description="Custom HTTP headers to send with the request",
+    )
+    cookies: dict | None = Field(
+        default=None,
+        description="Cookies to send with the request (name → value)",
+    )
 
 
 class SanitizerSuggestionSchema(BaseModel):
@@ -380,6 +404,14 @@ class RefineSpecChatRequest(BaseModel):
     scraper_profile: str = Field(
         default="fetcher",
         description="Scraper profile to use for fetching",
+    )
+    headers: dict | None = Field(
+        default=None,
+        description="Custom HTTP headers to send with the request",
+    )
+    cookies: dict | None = Field(
+        default=None,
+        description="Cookies to send with the request (name → value)",
     )
 
 

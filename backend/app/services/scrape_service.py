@@ -41,10 +41,16 @@ class ScrapeService:
             from app.crawlers.factory import create_fetcher
             from app.crawlers.extraction import extract_data
 
-            response = create_fetcher(
+            fetcher = create_fetcher(
                 profile=config.scraper_profile,
                 fetch_options=config.fetch_options or {},
-            ).get(url)
+            )
+            fetch_kwargs: dict = {}
+            if config.custom_headers:
+                fetch_kwargs["headers"] = config.custom_headers
+            if config.cookies:
+                fetch_kwargs["cookies"] = config.cookies
+            response = fetcher.get(url, **fetch_kwargs)
         except ImportError as exc:
             logger.error(
                 "Scrapling dependencies not available: %s. "

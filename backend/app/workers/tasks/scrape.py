@@ -88,7 +88,12 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                     config.scraper_profile,
                     config.fetch_options or {},
                 )
-                response = fetcher.get(job.target_url)
+                fetch_kwargs: dict = {}
+                if config.custom_headers:
+                    fetch_kwargs["headers"] = config.custom_headers
+                if config.cookies:
+                    fetch_kwargs["cookies"] = config.cookies
+                response = fetcher.get(job.target_url, **fetch_kwargs)
                 http_status = getattr(response, "status", None)
 
                 # 5. Extract

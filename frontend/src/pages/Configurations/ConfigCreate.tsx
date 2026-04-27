@@ -24,6 +24,7 @@ export default function ConfigCreate() {
     extraction_spec: '{\n  "fields": {\n    "title": { "selector": "h1::text", "type": "css" }\n  }\n}',
     fetch_options: '',
     custom_headers: '',
+    cookies: '',
   });
 
   const [sanitizerConfigs, setSanitizerConfigs] = useState<SanitizerConfig[]>([]);
@@ -230,6 +231,17 @@ export default function ConfigCreate() {
         }
       }
 
+      let cookies = null;
+      if (form.cookies.trim()) {
+        try {
+          cookies = JSON.parse(form.cookies);
+        } catch {
+          setError('Invalid JSON in Cookies');
+          setSaving(false);
+          return;
+        }
+      }
+
       const payload = {
         name: form.name,
         description: form.description || null,
@@ -243,6 +255,7 @@ export default function ConfigCreate() {
         extraction_spec,
         fetch_options,
         custom_headers,
+        cookies,
       };
 
       const created = await configsApi.create(payload);
@@ -835,6 +848,23 @@ export default function ConfigCreate() {
                 onChange={(e) => updateField('custom_headers', e.target.value)}
                 rows={3}
                 placeholder='{"X-Custom": "value"}'
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.8rem',
+                  resize: 'vertical',
+                  whiteSpace: 'pre',
+                }}
+              />
+            </div>
+
+            <div className="card" style={{ padding: 28 }}>
+              <h3 className="card-title" style={{ marginBottom: 20 }}>Cookies (JSON)</h3>
+              <textarea
+                className="form-input"
+                value={form.cookies}
+                onChange={(e) => updateField('cookies', e.target.value)}
+                rows={3}
+                placeholder='{"birthtime": "0", "wants_mature_content": "1"}'
                 style={{
                   fontFamily: 'var(--font-mono)',
                   fontSize: '0.8rem',

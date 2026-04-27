@@ -77,6 +77,8 @@ class AIService:
         url: str,
         description: str,
         scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+        headers: dict | None = None,
+        cookies: dict | None = None,
     ) -> ExtractionSpecAIResponse:
         """Full pipeline: fetch → sanitize → LLM → validate."""
         settings = get_settings()
@@ -84,7 +86,7 @@ class AIService:
             raise AIDisabledError()
 
         # 1. Fetch page HTML via Scrapling
-        html = self._fetch_page_html(url, scraper_profile)
+        html = self._fetch_page_html(url, scraper_profile, headers=headers, cookies=cookies)
 
         # 2. Sanitize (extracts JSON-LD before stripping scripts)
         sanitize_result = sanitize_html(html)
@@ -304,6 +306,8 @@ class AIService:
         urls: list[str],
         current_spec: dict | None,
         scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+        headers: dict | None = None,
+        cookies: dict | None = None,
     ) -> RefineSpecChatResponse:
         """Chat-based spec refinement with conversation history and multiple URLs.
 
@@ -324,7 +328,7 @@ class AIService:
         html_pages: list[tuple[str, str]] = []
         url_contexts: list[ChatUrlContext] = []
         for url in urls:
-            html = self._fetch_page_html(url, scraper_profile)
+            html = self._fetch_page_html(url, scraper_profile, headers=headers, cookies=cookies)
             html_pages.append((url, html))
 
         # 2. Sanitize each page and build context
@@ -431,6 +435,8 @@ class AIService:
         scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
         fetch_options: dict | None = None,
         max_iterations: int | None = None,
+        headers: dict | None = None,
+        cookies: dict | None = None,
     ) -> SpecVerificationResponse:
         """Full verification pipeline: fetch → extract → evaluate → optionally refine.
 
@@ -449,6 +455,10 @@ class AIService:
         max_iterations
             Maximum LLM refinement rounds.  ``None`` uses the config default.
             ``0`` means verify only, no LLM refinement at all.
+        headers
+            Optional custom headers to pass to the fetcher.
+        cookies
+            Optional cookies dict to pass to the fetcher.
         """
         settings = get_settings()
         if not settings.ai_enabled:
@@ -465,7 +475,12 @@ class AIService:
             from app.crawlers.factory import create_fetcher  # noqa: F811
 
             fetcher = create_fetcher(scraper_profile, fetch_options=fetch_options or {})
-            response = fetcher.get(url)
+            fetch_kwargs: dict = {}
+            if headers:
+                fetch_kwargs["headers"] = headers
+            if cookies:
+                fetch_kwargs["cookies"] = cookies
+            response = fetcher.get(url, **fetch_kwargs)
         except ImportError as exc:
             raise AIInvalidPageError(
                 url,
@@ -615,6 +630,8 @@ class AIService:
         extraction_spec: dict,
         description: str | None = None,
         scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+        headers: dict | None = None,
+        cookies: dict | None = None,
     ) -> "SanitizerSuggestionResponse":
         """Analyze extracted data and suggest sanitizer rules.
 
@@ -632,16 +649,21 @@ class AIService:
             raise AIDisabledError()
 
         # 1. Fetch page and extract data
-        html = self._fetch_page_html(url, scraper_profile)
+        html = self._fetch_page_html(url, scraper_profile, headers=headers, cookies=cookies)
         sanitize_result = sanitize_html(html)
 
         from app.crawlers.factory import create_fetcher
         from app.crawlers.extraction import extract_data
 
+        fetch_kwargs: dict = {}
+        if headers:
+            fetch_kwargs["headers"] = headers
+        if cookies:
+            fetch_kwargs["cookies"] = cookies
         response = create_fetcher(
             profile=scraper_profile,
             fetch_options={},
-        ).get(url)
+        ).get(url, **fetch_kwargs)
 
         next_data = None
         json_ld = None
@@ -720,6 +742,8 @@ class AIService:
     def _fetch_page_html(
         url: str,
         scraper_profile: ScraperProfile = ScraperProfile.FETCHER,
+        headers: dict | None = None,
+        cookies: dict | None = None,
     ) -> str:
         """Fetch raw HTML from *url* using Scrapling fetchers.
 
@@ -737,7 +761,12 @@ class AIService:
             from app.crawlers.factory import create_fetcher  # noqa: F811
 
             fetcher = create_fetcher(scraper_profile)
-            response = fetcher.get(url)
+            fetch_kwargs: dict = {}
+            if headers:
+                fetch_kwargs["headers"] = headers
+            if cookies:
+                fetch_kwargs["cookies"] = cookies
+            response = fetcher.get(url, **fetch_kwargs)
         except ImportError as exc:
             raise AIInvalidPageError(
                 url,

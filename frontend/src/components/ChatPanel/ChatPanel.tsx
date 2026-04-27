@@ -9,6 +9,8 @@ interface ChatPanelProps {
   scraperProfile: string;
   initialSpec: Record<string, unknown> | null;
   configName: string;
+  headers?: Record<string, string> | null;
+  cookies?: Record<string, string> | null;
   onApplySpec: (spec: Record<string, unknown>) => void;
   onVerifySpec: (url: string, spec: Record<string, unknown>) => Promise<SpecVerificationResponse>;
   onSuggestSanitizer: (url: string, spec: Record<string, unknown>, description?: string) => Promise<SanitizerSuggestionResponse>;
@@ -34,6 +36,8 @@ export default function ChatPanel({
   scraperProfile,
   initialSpec,
   configName,
+  headers,
+  cookies,
   onApplySpec,
   onVerifySpec,
   onSuggestSanitizer,
@@ -184,6 +188,8 @@ export default function ChatPanel({
         urls: validUrls,
         current_spec: currentSpec,
         scraper_profile: scraperProfile,
+        headers: headers || undefined,
+        cookies: cookies || undefined,
       });
 
       const assistantMsg: DisplayMessage = {

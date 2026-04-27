@@ -39,6 +39,7 @@ class CrawlConfigCreate(BaseModel):
     use_proxy: bool = False
     rotate_user_agent: bool = True
     custom_headers: dict | None = None
+    cookies: dict | None = None
     custom_delay: Decimal | None = Field(
         None, ge=0, description="Seconds between requests"
     )
@@ -64,6 +65,7 @@ class CrawlConfigUpdate(BaseModel):
     use_proxy: bool | None = None
     rotate_user_agent: bool | None = None
     custom_headers: dict | None = None
+    cookies: dict | None = None
     custom_delay: Decimal | None = None
     max_concurrent: int | None = None
     sanitizer_config_id: UUID | None = None
@@ -86,6 +88,7 @@ class CrawlConfigResponse(BaseModel):
     use_proxy: bool
     rotate_user_agent: bool
     custom_headers: dict | None
+    cookies: dict | None
     custom_delay: Decimal | None
     max_concurrent: int | None
     sanitizer_config_id: UUID | None

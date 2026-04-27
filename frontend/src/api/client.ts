@@ -12,6 +12,7 @@ export interface CrawlConfig {
   use_proxy: boolean;
   rotate_user_agent: boolean;
   custom_headers: Record<string, string> | null;
+  cookies: Record<string, string> | null;
   custom_delay: number | null;
   max_concurrent: number | null;
   sanitizer_config_id: string | null;
@@ -242,6 +243,8 @@ export interface ExtractionSpecAIRequest {
   url: string;
   description: string;
   scraper_profile?: string;
+  headers?: Record<string, string> | null;
+  cookies?: Record<string, string> | null;
 }
 
 export interface ExtractionSpecAIResponse {
@@ -270,6 +273,8 @@ export interface VerifySpecRequest {
   scraper_profile?: string;
   fetch_options?: Record<string, unknown> | null;
   max_iterations?: number;
+  headers?: Record<string, string> | null;
+  cookies?: Record<string, string> | null;
 }
 
 export interface FieldVerificationResult {
@@ -497,6 +502,8 @@ export interface RefineSpecChatRequest {
   urls: string[];
   current_spec: Record<string, unknown> | null;
   scraper_profile?: string;
+  headers?: Record<string, string> | null;
+  cookies?: Record<string, string> | null;
 }
 
 export interface RefineSpecChatResponse {
@@ -539,7 +546,7 @@ export const aiApi = {
       body: JSON.stringify(data),
     }),
 
-  suggestSanitizer: (data: { url: string; extraction_spec: Record<string, unknown>; description?: string; scraper_profile?: string }) =>
+  suggestSanitizer: (data: { url: string; extraction_spec: Record<string, unknown>; description?: string; scraper_profile?: string; headers?: Record<string, string> | null; cookies?: Record<string, string> | null }) =>
     request<SanitizerSuggestionResponse>('/ai/suggest-sanitizer', {
       method: 'POST',
       body: JSON.stringify(data),
