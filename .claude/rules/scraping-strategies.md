@@ -75,9 +75,12 @@ titles = page.css("h1::text").getall()
 ```python
 from scrapling.fetchers import FetcherSession
 
-with FetcherSession(impersonate="chrome") as session:
-    page = session.get("https://example.com/", stealthy_headers=True)
+with FetcherSession() as session:
+    page = session.get("https://example.com/", impersonate="chrome", stealthy_headers=True)
     items = page.css(".item").getall()
+```
+
+> **Scrapling v0.4+ breaking change:** Constructor kwargs (`impersonate`, `cookies`, `headers`, etc.) are **silently ignored** and log a deprecation warning. Always pass HTTP options directly to `.get()` / `.fetch()`. Pilgrim's `create_fetcher()` factory returns bare instances; the service layer merges `cookies`, `custom_headers`, and `fetch_options` into `.get()` kwargs.
 ```
 
 ### 4.3 Async stealth (worker-friendly)

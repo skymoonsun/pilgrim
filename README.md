@@ -27,6 +27,7 @@ Pilgrim is a **"Scraping as a Service"** microservice that automates web data co
 - **Config-driven scraping** — Define extraction rules (CSS/XPath selectors) once, reuse across multiple URLs
 - **Data sanitizers** — Reusable post-processing rules to clean up extracted values (strip currency symbols, normalize whitespace, convert types)
 - **AI-powered config generation** — Describe what to extract in natural language; AI generates the selectors for you
+- **Chat-based AI refinement** — Iteratively refine extraction specs in a conversation. Provide multiple URLs, see field previews, verify, and sanitize — all inside a chat panel
 - **AI-powered sanitizer generation** — Let AI suggest sanitizer rules based on sample extracted data
 - **Proxy management** — Fetch, parse, validate, and rotate proxies from configurable sources with health monitoring
 - **Manual proxy support** — Add paid/custom proxies individually or in bulk; they persist until deleted
@@ -103,7 +104,7 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | Page | Route | Description |
 |------|-------|-------------|
 | **Dashboard** | `/` | System health, metrics, recent jobs |
-| **Configurations** | `/configurations` | Manage crawl configs (CRUD) |
+| **Configurations** | `/configurations` | Manage crawl configs (CRUD) + AI ChatPanel for iterative refinement |
 | **Scrape Playground** | `/scrape` | Test configs with real URLs (live) |
 | **Jobs** | `/jobs` | Monitor async crawl jobs |
 | **Sanitizers** | `/sanitizer-configs` | Manage sanitizer configs (CRUD) + AI generation |
@@ -144,6 +145,7 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | `POST` | `/api/v1/ai/generate-spec` | Generate extraction spec via AI |
 | `POST` | `/api/v1/ai/verify-spec` | Verify extraction spec against a URL |
 | `POST` | `/api/v1/ai/suggest-proxy-source` | AI-analyze a proxy source URL |
+| `POST` | `/api/v1/ai/refine-spec` | Chat-based spec refinement (multi-URL, conversation history) |
 | `POST` | `/api/v1/ai/suggest-sanitizer` | AI-generate sanitizer rules from URL + extraction spec |
 | `GET` | `/api/v1/ai/status` | Check AI feature availability |
 | `POST` | `/api/v1/sanitizer-configs/` | Create a sanitizer config |
@@ -212,7 +214,7 @@ pilgrim/
 ├── frontend/
 │   ├── src/
 │   │   ├── api/                # Typed API client
-│   │   ├── components/         # Layout (Sidebar, Header) + Icons
+│   │   ├── components/         # Layout (Sidebar, Header) + Icons + ChatPanel
 │   │   ├── pages/              # Dashboard, Configurations, Scrape, Jobs, Schedules, ProxySources, Proxies, Sanitizers, Settings
 │   │   ├── App.tsx             # React Router setup
 │   │   └── index.css           # Design system (CSS variables, dark theme)
@@ -297,6 +299,38 @@ Pilgrim can generate extraction specs automatically using an LLM. Instead of wri
 3. The LLM generates an `extraction_spec` with CSS/XPath selectors
 4. You review and optionally edit the result before saving
 
+### Chat-based refinement
+
+For iterative workflows, the ConfigEdit page includes a **ChatPanel** where you can:
+
+- Provide **multiple URLs** in a single message (up to 5)
+- Have a **conversation** with the AI — "the price selector is wrong", "add a stock status field"
+- See a **live preview** of generated selectors before applying
+- **Verify** the spec against any URL directly from the chat
+- **Suggest sanitizers** and see before/after samples
+- All chat history is persisted to `localStorage` per config
+
+The backend uses the same Scrapling fetcher as crawl jobs, so cookies, custom headers, and fetch options configured on the config are respected during AI refinement.
+
+### Passing cookies and custom headers
+
+Both the AI endpoints and the scrape endpoint accept optional `cookies` and `custom_headers`:
+
+```bash
+# Generate with cookies (e.g. Steam age-check bypass)
+curl -X POST http://localhost:8000/api/v1/ai/generate-spec \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://store.steampowered.com/app/1771300/...",
+    "description": "Extract game title and price",
+    "cookies": {
+      "birthtime": "662680801",
+      "wants_mature_content": "1",
+      "lastagecheckage": "1-January-1991"
+    }
+  }'
+```
+
 ### Setup (Ollama)
 
 1. [Install Ollama](https://ollama.com) and pull a model:
@@ -318,6 +352,20 @@ Pilgrim can generate extraction specs automatically using an LLM. Instead of wri
 ```bash
 # Check AI availability
 curl http://localhost:8000/api/v1/ai/status
+
+# Chat-based refinement (multi-URL, with conversation history)
+curl -X POST http://localhost:8000/api/v1/ai/refine-spec \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Extract the game title, price, and discount"}
+    ],
+    "urls": [
+      "https://store.steampowered.com/app/1771300/..."
+    ],
+    "current_spec": null,
+    "scraper_profile": "fetcher"
+  }'
 
 # Generate an extraction spec
 curl -X POST http://localhost:8000/api/v1/ai/generate-spec \
@@ -341,6 +389,15 @@ No changes to the service or API layer are needed.
 ### Scraper profile selection
 
 The AI endpoint accepts an optional `scraper_profile` parameter. Use `fetcher` (default) for static pages or `http_session` for sites requiring cookies. The `stealth` and `dynamic` profiles require browser binaries that are only available in the worker container.
+
+| Profile | Use when |
+|---------|----------|
+| `fetcher` | Static pages, TLS impersonation (default) |
+| `http_session` | Sites requiring cookie persistence |
+| `stealth` | Heavy anti-bot (Cloudflare, etc.) |
+| `dynamic` | Full JavaScript / SPA |
+
+> **Note:** Since Scrapling v0.4+, constructor kwargs (e.g. `Fetcher(cookies=...)`) are silently ignored. Always pass HTTP options (cookies, headers, timeout, impersonate) directly to `.get()` or `.fetch()`. Pilgrim's `create_fetcher()` factory and service layer already handle this correctly.
 
 ### AI-powered sanitizer generation
 
