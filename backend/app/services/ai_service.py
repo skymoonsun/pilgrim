@@ -474,8 +474,10 @@ class AIService:
         try:
             from app.crawlers.factory import create_fetcher  # noqa: F811
 
-            fetcher = create_fetcher(scraper_profile, fetch_options=fetch_options or {})
+            fetcher = create_fetcher(scraper_profile)
             fetch_kwargs: dict = {}
+            if fetch_options:
+                fetch_kwargs.update(fetch_options)
             if headers:
                 fetch_kwargs["headers"] = headers
             if cookies:
@@ -662,7 +664,6 @@ class AIService:
             fetch_kwargs["cookies"] = cookies
         response = create_fetcher(
             profile=scraper_profile,
-            fetch_options={},
         ).get(url, **fetch_kwargs)
 
         next_data = None

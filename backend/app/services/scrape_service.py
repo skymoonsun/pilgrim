@@ -41,11 +41,10 @@ class ScrapeService:
             from app.crawlers.factory import create_fetcher
             from app.crawlers.extraction import extract_data
 
-            fetcher = create_fetcher(
-                profile=config.scraper_profile,
-                fetch_options=config.fetch_options or {},
-            )
+            fetcher = create_fetcher(profile=config.scraper_profile)
             fetch_kwargs: dict = {}
+            if config.fetch_options:
+                fetch_kwargs.update(config.fetch_options)
             if config.custom_headers:
                 fetch_kwargs["headers"] = config.custom_headers
             if config.cookies:

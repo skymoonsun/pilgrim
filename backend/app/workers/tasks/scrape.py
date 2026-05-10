@@ -84,11 +84,10 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                 config = result.scalar_one()
 
                 # 4. Fetch
-                fetcher = create_fetcher(
-                    config.scraper_profile,
-                    config.fetch_options or {},
-                )
+                fetcher = create_fetcher(config.scraper_profile)
                 fetch_kwargs: dict = {}
+                if config.fetch_options:
+                    fetch_kwargs.update(config.fetch_options)
                 if config.custom_headers:
                     fetch_kwargs["headers"] = config.custom_headers
                 if config.cookies:
