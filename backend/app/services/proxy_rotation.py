@@ -235,7 +235,7 @@ async def fetch_with_proxy_rotation(
                 attempt,
                 max_attempts,
                 label,
-                exc,
+                _sanitize_error(exc, proxy),
             )
             continue
 
