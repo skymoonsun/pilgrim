@@ -73,7 +73,9 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
 
         settings = get_settings()
         engine = create_async_engine(str(settings.database_url))
-        session_factory = async_sessionmaker(engine, class_=AsyncSession)
+        session_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
 
         async with session_factory() as session:
             service = CrawlJobService(session)

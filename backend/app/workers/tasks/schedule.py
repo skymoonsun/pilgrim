@@ -39,7 +39,9 @@ async def _check_schedules() -> dict[str, int]:
 
     settings = get_settings()
     engine = create_async_engine(str(settings.database_url))
-    session_factory = async_sessionmaker(engine, class_=AsyncSession)
+    session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     triggered = 0
 
