@@ -8,6 +8,10 @@ Usage (inside the API container)::
 No ``--password`` = a random high-entropy password is generated.  The
 plaintext password exists only in this output (and the scrypt hash in the
 database) — passlib scrypt, same scheme the login endpoint verifies.
+
+``--password`` is supported for scripted provisioning but the value is
+visible in ``ps`` output and shell history; the CLI warns and the
+generated password remains the recommended path.
 """
 
 from __future__ import annotations
@@ -25,6 +29,12 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import get_settings
 from app.core.security import generate_password, hash_password
+
+_ARGV_PASSWORD_WARNING = (
+    "WARNING: passing --password on the command line exposes it in `ps` "
+    "output and shell history. Prefer omitting it so a random password is "
+    "generated and printed once."
+)
 
 
 async def _create_user(username: str, password: str | None) -> int:
@@ -71,9 +81,12 @@ def main() -> None:
     parser.add_argument(
         "--password",
         default=None,
-        help="Plaintext password; omit to generate a random one",
+        help="Plaintext password; omit to generate a random one "
+        "(recommended) — argv values are visible in `ps` output",
     )
     args = parser.parse_args()
+    if args.password:
+        print(_ARGV_PASSWORD_WARNING, file=sys.stderr)
     sys.exit(asyncio.run(_create_user(args.username, args.password)))
 
 

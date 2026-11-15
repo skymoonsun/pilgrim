@@ -24,6 +24,10 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Cap for the per-process memory cache: 2048 (config_id, url) responses is
+# ample for a single-operator deployment yet bounds worst-case memory use.
+MAX_MEMORY_CACHE_ENTRIES = 2048
+
 
 class JsonCache(ABC):
     """Abstract TTL cache of JSON-serializable values."""
@@ -38,10 +42,18 @@ class JsonCache(ABC):
 
 
 class MemoryJsonCache(JsonCache):
-    """In-process cache with monotonic-clock expiry."""
+    """In-process cache with monotonic-clock expiry.
 
-    def __init__(self) -> None:
+    Bounded: at most ``max_entries`` keys are kept (FIFO eviction of the
+    oldest-inserted entries once the cap is hit) so a wide-open
+    config/url space cannot grow memory without limit (each key maps to a
+    cached response payload).  Redis has its own ``maxmemory`` policy;
+    the in-process backend needs this cap instead.
+    """
+
+    def __init__(self, max_entries: int = MAX_MEMORY_CACHE_ENTRIES) -> None:
         self._store: dict[str, tuple[float, Any]] = {}
+        self._max_entries = max_entries
 
     async def get(self, key: str) -> Any | None:
         entry = self._store.get(key)
@@ -54,7 +66,11 @@ class MemoryJsonCache(JsonCache):
         return value
 
     async def set(self, key: str, value: Any, ttl_seconds: int) -> None:
+        self._store.pop(key, None)  # re-insert ⇒ refreshed eviction order
         self._store[key] = (time.monotonic() + ttl_seconds, value)
+        while len(self._store) > self._max_entries:
+            oldest = next(iter(self._store))
+            self._store.pop(oldest, None)
 
     def reset(self) -> None:
         """Drop the whole cache (test helper)."""

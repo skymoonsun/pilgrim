@@ -9,6 +9,14 @@ from typing import Literal
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Built-in placeholder used when ``PILGRIM_JWT_SECRET`` is not configured.
+# Kept >= 32 bytes so pyjwt (HS256) never warns about key length; the
+# startup guard in ``app.core.security`` warns loudly while it is in use
+# and refuses to boot ``strict`` auth mode on it.
+DEFAULT_JWT_SECRET = "pilgrim-dev-secret-change-me-not-for-prod!!"
+# HS256 keys of less than 32 bytes trigger pyjwt's InsecureKeyLengthWarning.
+MIN_JWT_SECRET_BYTES = 32
+
 
 class Settings(BaseSettings):
     """Typed, validated application settings.
@@ -73,9 +81,12 @@ class Settings(BaseSettings):
         default="read-open",
         validation_alias="PILGRIM_AUTH_MODE",
     )
-    # Change this in any multi-user / exposed deployment.
+    # Change this in any multi-user / exposed deployment.  Secrets shorter
+    # than ``MIN_JWT_SECRET_BYTES`` are rejected outright (HS256 security);
+    # leaving it unset keeps the placeholder above, which the startup guard
+    # announces loudly (strict mode refuses to start on it).
     jwt_secret: str = Field(
-        default="pilgrim-dev-secret-change-me",
+        default=DEFAULT_JWT_SECRET,
         validation_alias="PILGRIM_JWT_SECRET",
     )
     jwt_ttl_seconds: int = Field(
@@ -200,6 +211,18 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = Field(default=None, validation_alias="SENTRY_DSN")
 
     # ── Validators ───────────────────────────────────────────────
+    @field_validator("jwt_secret", mode="after")
+    @classmethod
+    def require_long_enough_secret(cls, v: str) -> str:
+        """Reject JWT secrets shorter than 32 bytes (HS256 key length)."""
+        if len(v.encode("utf-8")) < MIN_JWT_SECRET_BYTES:
+            raise ValueError(
+                f"PILGRIM_JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} "
+                "bytes for HS256; generate one with `python -c \"import "
+                "secrets; print(secrets.token_urlsafe(48))\"`"
+            )
+        return v
+
     @field_validator("database_url", mode="after")
     @classmethod
     def require_async_driver(cls, v: PostgresDsn) -> PostgresDsn:

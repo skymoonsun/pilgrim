@@ -29,7 +29,7 @@ from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import DEFAULT_JWT_SECRET, Settings, get_settings
 from app.db.database import get_async_session
 from app.models.user import User
 
@@ -62,6 +62,34 @@ def hash_password(password: str) -> str:
 def generate_password() -> str:
     """Generate a one-time password for the create-user CLI."""
     return token_urlsafe(GENERATED_PASSWORD_LENGTH)
+
+
+def guard_jwt_secret(settings: Settings) -> None:
+    """Loud startup check for the JWT signing secret (fail-closed guard).
+
+    - ``PILGRIM_JWT_SECRET`` unset (placeholder in use) + ``strict`` mode:
+      raise ``RuntimeError`` — a token-only deployment would run on a
+      publicly documented secret.
+    - placeholder in ``read-open`` mode: emit a LOUD warning once at
+      startup so the operator cannot miss it.
+    - explicitly configured secrets were already length-checked by
+      ``Settings`` (≥ 32 bytes); nothing to do here.
+    """
+    if settings.jwt_secret != DEFAULT_JWT_SECRET:
+        return
+    if settings.auth_mode == "strict":
+        raise RuntimeError(
+            "PILGRIM_JWT_SECRET is not set and PILGRIM_AUTH_MODE=strict — "
+            "refusing to start on the built-in dev placeholder. Set "
+            "PILGRIM_JWT_SECRET (>= 32 bytes) for any token-gated "
+            "deployment."
+        )
+    logger.warning(
+        "SECURITY: PILGRIM_JWT_SECRET is not set — running on the built-in "
+        "dev placeholder. Set PILGRIM_JWT_SECRET (>= 32 bytes) before "
+        "exposing this API; PILGRIM_AUTH_MODE=strict refuses to start on "
+        "the placeholder."
+    )
 
 
 def verify_password(plain: str, hashed: str) -> bool:

@@ -18,7 +18,7 @@ from app.core.error_handlers import (
 )
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
-from app.core.security import authorize
+from app.core.security import authorize, guard_jwt_secret
 
 settings = get_settings()
 
@@ -28,6 +28,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup / shutdown hooks."""
     configure_logging()
+    # Fail loudly on secret hygiene before serving any traffic: the
+    # default JWT placeholder warns (read-open) or aborts (strict).
+    guard_jwt_secret(settings)
     yield
     # Shutdown: dispose DB engine pool
     from app.db.database import engine

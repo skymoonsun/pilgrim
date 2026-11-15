@@ -229,3 +229,37 @@ class TestCrawlEndpoint:
         fresh = await client.post("/api/v1/crawl/jobs", json=crawl_body)
         # Reached its handler (own budget untouched by the scrape hits).
         assert fresh.status_code == 404
+
+
+class TestLoginEndpoint:
+    """Login runs in its own ``auth`` bucket — brute-force guard for the
+    public scrypt endpoint without sharing the scrape/crawl budgets."""
+
+    _CREDS = {"username": "nobody", "password": "wrong"}
+
+    async def test_429_after_limit(
+        self, capped_settings: Iterator[None], client: AsyncClient
+    ) -> None:
+        first = await client.post("/api/v1/auth/login", json=self._CREDS)
+        assert first.status_code == 401  # bad creds, limiter passed it
+        second = await client.post("/api/v1/auth/login", json=self._CREDS)
+        assert second.status_code == 429
+        assert second.json()["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+        assert int(second.headers["Retry-After"]) > 0
+
+    async def test_auth_budget_is_independent_of_scrape(
+        self, capped_settings: Iterator[None], client: AsyncClient
+    ) -> None:
+        """Exhausting the login budget does not touch the scrape budget."""
+        blocked = await client.post("/api/v1/auth/login", json=self._CREDS)
+        assert blocked.status_code == 401
+        spent = await client.post("/api/v1/auth/login", json=self._CREDS)
+        assert spent.status_code == 429
+
+        scrape_body = {
+            "config_id": "00000000-0000-0000-0000-000000000000",
+            "url": "https://example.com/auth-bucket",
+        }
+        fresh = await client.post("/api/v1/scrape/", json=scrape_body)
+        # Reached its handler — scrape budget untouched by the auth hits.
+        assert fresh.status_code == 404

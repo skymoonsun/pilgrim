@@ -19,8 +19,11 @@ class User(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "users"
 
+    # unique=True keeps exactly ONE unique index on username (the
+    # constraint's backing index).  The old explicit ``ix_users_username``
+    # duplicate was dropped in migration k0l9m8n7o6p5.
     username: Mapped[str] = mapped_column(
-        String(180), unique=True, index=True, nullable=False
+        String(180), unique=True, nullable=False
     )
     # scrypt hash (passlib CryptContext); never store plaintext.
     password: Mapped[str] = mapped_column(String(255), nullable=False)
