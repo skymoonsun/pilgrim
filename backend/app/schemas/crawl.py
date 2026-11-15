@@ -1,6 +1,7 @@
 """Crawl and scrape request / response schemas."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
@@ -32,6 +33,12 @@ class ScrapeResponse(BaseModel):
     data: dict | list | None = None
     error: str | None = None
     duration_ms: float | None = None
+
+    # Credential-free proxy-rotation story (which proxy served the
+    # fetch, each attempt with its outcome, direct-fallback flag) —
+    # mirrors the async job's ``result_summary['proxy']``.  Populated
+    # only when the config has ``use_proxy: true``.
+    proxy: dict[str, Any] | None = None
 
 
 # ── Async crawl job ──────────────────────────────────────────────
