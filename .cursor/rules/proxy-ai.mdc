@@ -76,7 +76,12 @@ Entry point: `parse_proxy_list(content, format_type, extraction_spec=None)`
 
 ## 5. Proxy rotation
 
-When `use_proxy=true` on a `CrawlConfiguration`, `get_random_healthy(protocol=None)` selects a random healthy proxy via `ORDER BY RANDOM() LIMIT 1`.
+When `use_proxy=true` on a `CrawlConfiguration`, the Celery task `pilgrim.scrape.run_job` routes its fetch through the healthy proxy pool (`app/services/proxy_rotation.py`):
+
+1. `get_random_healthy(protocol=None, exclude_ids=...)` selects a random healthy proxy via `ORDER BY RANDOM() LIMIT 1`; `exclude_ids` keeps failed proxies out of retries, so each attempt uses a *different* proxy.
+2. The proxy is passed per-request to Scrapling (0.4 API): static profiles take `proxy` + `proxy_auth` kwargs, browser profiles take a `proxy` dict (`server`/`username`/`password`).
+3. Up to `fetch_options.proxy_retries` distinct proxies are tried (default 3, clamped 1–5). If the pool runs dry or all attempts fail, the fetch falls back to a direct (proxyless) request.
+4. The job's `result_summary.proxy` records every attempt (masked `protocol://ip:port`, outcome, error), the proxy used, and any direct fallback — credentials never appear in logs or the activity feed. Rotation reads the pool only; validation owns proxy health.
 
 ## 6. AI integration
 

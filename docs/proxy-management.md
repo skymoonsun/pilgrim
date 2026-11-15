@@ -510,7 +510,7 @@ On the **New Proxy Source** or **Edit Proxy Source** page, click **Verify Parsin
 
 ## Proxy Rotation
 
-Crawl configurations with `use_proxy: true` will request a random healthy proxy for each request:
+Crawl configurations with `use_proxy: true` route their fetches through the healthy proxy pool. The rotation runs inside the Celery task `pilgrim.scrape.run_job`:
 
 ```bash
 # Enable proxy rotation on a crawl config
@@ -519,12 +519,46 @@ curl -X PATCH http://localhost:8000/api/v1/crawl-configs/{id} \
   -d '{"use_proxy": true}'
 ```
 
-The proxy selection uses `get_random_healthy()`, which:
-1. Queries `ValidProxy` rows with `health = 'healthy'`
-2. Optionally filters by `protocol`
-3. Returns a random proxy using `ORDER BY RANDOM() LIMIT 1`
+### Per-fetch behaviour
 
-If no healthy proxy is available, the request proceeds without a proxy.
+1. A random healthy proxy is selected via `get_random_healthy()`, which:
+   - Queries `ValidProxy` rows with `health = 'healthy'`
+   - Optionally filters by `protocol`
+   - Returns a random proxy using `ORDER BY RANDOM() LIMIT 1`
+2. The request goes through that proxy using Scrapling's request-level proxy support — static profiles (`fetcher`, `http_session`, `spider`) take a `proxy` URL plus an optional `proxy_auth` tuple; browser profiles (`stealth`, `dynamic`) take a `proxy` dict with `server` / `username` / `password` keys.
+3. If the fetch fails, the worker rotates to a **different** healthy proxy (the failed proxy's ID is excluded from further selections for this fetch). Up to `fetch_options.proxy_retries` distinct proxies are tried — default 3, clamped to the 1–5 range.
+4. If the pool has no healthy proxy left — it was empty from the start, every proxy has been tried, or all attempts failed — the fetch falls back to a **direct (proxyless) request** and the fallback is recorded (see below).
+
+Rotation only *reads* the pool: it never mutates proxy health or metrics. Proxy health is owned by the validation task.
+
+### Transparency (activity log)
+
+Every proxied job records its proxy story in `CrawlJob.result_summary["proxy"]`, which surfaces in the activity feed:
+
+```json
+{
+  "enabled": true,
+  "used": "http://203.0.113.10:8080",
+  "attempts": [
+    {"attempt": 1, "proxy": "http://203.0.113.1:8080", "ok": false, "error": "connection timed out"},
+    {"attempt": 2, "proxy": "http://203.0.113.10:8080", "ok": true, "error": null}
+  ],
+  "fell_back_direct": false,
+  "fallback_reason": null
+}
+```
+
+Proxy credentials are **always masked** in these records and in worker logs — only `protocol://ip:port` is ever shown (`"(authenticated)"` is appended for proxies with credentials). Error messages stored per attempt are scrubbed against the proxy's username/password.
+
+### Configuration
+
+| Fetch option | Type | Default | Description |
+|--------------|------|---------|-------------|
+| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5) |
+
+Each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option.
+
+> If no healthy proxy is available, the request proceeds without a proxy — the fallback is flagged as `fell_back_direct: true` with `fallback_reason: "no_healthy_proxy_available"`.
 
 ---
 

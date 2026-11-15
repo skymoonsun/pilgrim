@@ -33,6 +33,7 @@ Endpoints: `POST /proxies/` (single), `POST /proxies/bulk` (raw text), `GET /pro
 - **fetch_proxy_source**: httpx GET → parse → upsert each proxy, set `expires_at`, auto-retry on timeout (max 3)
 - **validate_proxies**: test each proxy against `validation_urls`; health = healthy/degraded/unhealthy based on `require_all_urls`
 - **expire_proxies**: hourly via Beat; delete where `expires_at < now` (manual proxies never expired)
+- **proxy rotation** (in `pilgrim.scrape.run_job`, crawl_default queue): `use_proxy=true` → random healthy proxy per fetch, rotate to a different one on failure (max `fetch_options.proxy_retries`, default 3), direct-fetch fallback when the pool runs dry; attempts recorded (masked) in `result_summary.proxy` — see `.cursor/rules/proxy-ai.mdc` §5
 
 Each task creates its own `AsyncEngine` (workers outside API DI).
 
