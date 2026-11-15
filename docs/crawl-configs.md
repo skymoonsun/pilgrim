@@ -168,15 +168,24 @@ Each profile maps to a different Scrapling fetcher class:
 | `fetcher` | `Fetcher` | Static HTML pages, APIs | No |
 | `http_session` | `FetcherSession` | Session-based scraping (cookies persist) | No |
 | `stealth` | `StealthyFetcher` | Anti-bot protected sites | Yes |
-| `dynamic` | `DynamicFetcher` | JavaScript-rendered pages (SPA) | Yes |
+| `dynamic` | `StealthyFetcher` | JavaScript-rendered pages (SPA) | Yes |
 | `spider` | Spider classes | Multi-page crawls | Depends |
+
+> **scrapling >= 0.5 note:** the plain Playwright browser backend was removed
+> upstream, so `stealth` and `dynamic` both run on the Patchright-based
+> `StealthyFetcher` (scrapling's [migration guide](https://scrapling.readthedocs.io/en/latest/migrating-to-v0.5.html)).
+> `dynamic` only remains as an alias so existing configs keep working.
+> `fetch_options` are validated against the profile's request API — unknown
+> keys are dropped with a warning instead of crashing the fetch, and
+> `timeout` is documented in seconds (converted to milliseconds for browser
+> profiles).
 
 ### When to Choose Which
 
 - **`fetcher`** (default) — Start here. Works for most static sites. Fastest and lightest.
 - **`http_session`** — When you need cookies to persist across requests (login flows, pagination with session state).
 - **`stealth`** — When the target site uses Cloudflare, Imperva, or similar bot protection. Uses real browser fingerprints.
-- **`dynamic`** — When critical content is loaded via JavaScript (React/Vue/Angular SPAs). Launches a headless browser.
+- **`dynamic`** — When critical content is loaded via JavaScript (React/Vue/Angular SPAs). Same Patchright engine as `stealth` (scrapling >= 0.5).
 - **`spider`** — For multi-page crawls with link following. Define spider classes in `app/crawlers/spiders/`.
 
 > **Important:** `stealth` and `dynamic` profiles only work in the **worker** container (which includes browser dependencies). The slim **API** container does not have these libraries.
@@ -185,7 +194,10 @@ Each profile maps to a different Scrapling fetcher class:
 
 ## Fetch Options
 
-The `fetch_options` field is a JSON object passed to the Scrapling fetcher constructor:
+The `fetch_options` field is a JSON object validated against the profile's
+request API and forwarded to the Scrapling fetcher on every request
+(scrapling >= 0.5 moved options out of fetcher constructors; Pilgrim's
+factory applies them as request-level kwargs):
 
 ```json
 {
@@ -198,10 +210,14 @@ The `fetch_options` field is a JSON object passed to the Scrapling fetcher const
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `timeout` | int | 30 | Request timeout in seconds |
+| `timeout` | int | 30 | Request timeout in seconds (for browser profiles Pilgrim converts it to scrapling's milliseconds) |
 | `stealthy_headers` | bool | `true` | Use realistic browser headers |
 | `follow_redirects` | bool | `true` | Follow HTTP redirects |
-| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
+| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). Never sent to scrapling; consumed by the rotation logic itself. See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
+
+Unknown keys for the chosen profile (e.g. `impersonate` on `stealth`,
+`headless` on `fetcher`) are logged as warnings and ignored by the fetcher
+factory instead of raising a `TypeError` mid-crawl.
 
 ---
 
