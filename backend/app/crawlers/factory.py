@@ -64,14 +64,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.crawlers.fetch_options import APP_OWNED_FETCH_KEYS as APP_OWNED_FETCH_KEYS
 from app.models.enums import ScraperProfile
 
 logger = logging.getLogger(__name__)
-
-#: ``fetch_options`` keys Pilgrim consumes itself and never forwards to
-#: scrapling.  ``proxy_retries`` (the proxy-rotation budget) is read from
-#: the *raw* options by ``app.services.proxy_rotation.resolve_proxy_attempts``.
-APP_OWNED_FETCH_KEYS: frozenset[str] = frozenset({"proxy_retries"})
 
 # Keyword surfaces mirrored from scrapling >= 0.5's own typing:
 # ``RequestParams`` (curl_cffi backends) and ``StealthSession`` (browser).

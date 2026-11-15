@@ -305,6 +305,19 @@ def test_app_owned_keys_are_stripped_silently(
     assert warnings == []
 
 
+def test_app_owned_keys_alias_the_canonical_module() -> None:
+    """Single source of truth: the factory imports its app-owned keys.
+
+    ``APP_OWNED_FETCH_KEYS`` is defined once in
+    ``app.crawlers.fetch_options`` (the module the services and the
+    worker strip sites use); a local re-definition in the factory would
+    let the two copies drift apart silently.
+    """
+    from app.crawlers.fetch_options import APP_OWNED_FETCH_KEYS
+
+    assert factory.APP_OWNED_FETCH_KEYS is APP_OWNED_FETCH_KEYS
+
+
 def test_unknown_keys_are_dropped_with_a_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
