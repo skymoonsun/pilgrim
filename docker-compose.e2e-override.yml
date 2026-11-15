@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────
+# Pilgrim — E2E integration port isolation (used together with
+# docker-compose.dev.yml by c4game-core/scripts/e2e).
+# Keeps pilgrim off the byte-realm (:8000/:5432/:6379) and
+# c4game-core (:8020/:5433/:6380) host ports so all three stacks
+# run at the same time:
+#
+#   docker compose -p pilgrim-e2e \
+#     -f docker-compose.dev.yml -f docker-compose.e2e-override.yml \
+#     up -d --build --scale frontend=0
+#
+# → pilgrim api :8011 · postgres :5434 · redis :6381 · frontend :3011
+#   (project-scoped volumes: pilgrim-e2e_pgdata / pilgrim-e2e_redisdata)
+#
+# NOTE: `!override` replaces the base ports list instead of merging
+# (compose v2.24+; plain list values would be appended, re-binding
+# the base ports and colliding with the other stacks).
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  api:
+    ports: !override
+      - "8011:8000"
+
+  postgres:
+    ports: !override
+      - "5434:5432"
+
+  redis:
+    ports: !override
+      - "6381:6379"
+
+  frontend:
+    ports: !override
+      - "3011:3000"
