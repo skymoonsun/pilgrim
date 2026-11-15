@@ -214,6 +214,26 @@ class BulkDeleteResponse(BaseModel):
     deleted: int = Field(..., description="Number of proxies deleted")
 
 
+class ProxyPoolStatsResponse(BaseModel):
+    """Snapshot of the valid-proxy pool (GET /api/v1/proxies/stats)."""
+
+    total: int = Field(..., description="All valid proxies in the pool")
+    healthy: int = Field(..., description="Proxies currently marked healthy")
+    unhealthy: int = Field(
+        ..., description="Proxies not healthy (total - healthy)"
+    )
+    expiring_soon: int = Field(
+        ...,
+        description=(
+            "Sourced proxies with a TTL expiring within the window "
+            "(manual proxies have no TTL and are never counted)"
+        ),
+    )
+    ttl_window_seconds: int = Field(
+        ..., description="The window used for the expiring_soon count"
+    )
+
+
 # ── Proxy Fetch Log ──────────────────────────────────────────────
 
 

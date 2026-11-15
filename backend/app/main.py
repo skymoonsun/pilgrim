@@ -3,11 +3,12 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.api.v1 import api_router
+from app.api.v1.endpoints import auth
 from app.core.config import get_settings
 from app.core.error_handlers import (
     app_exception_handler,
@@ -17,6 +18,7 @@ from app.core.error_handlers import (
 )
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
+from app.core.security import authorize
 
 settings = get_settings()
 
@@ -57,7 +59,13 @@ app.add_exception_handler(IntegrityError, database_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # ── Routers ──────────────────────────────────────────────────────
-app.include_router(api_router, prefix="/api/v1")
+# The auth gate rides the whole v1 router.  It is method-aware: in the
+# default ``read-open`` mode GET/HEAD/OPTIONS stay public and every
+# mutation (POST/PATCH/PUT/DELETE) requires a bearer token; ``strict``
+# gates reads too.  The auth router is mounted separately so /auth/login
+# stays reachable without a token (that is the endpoint that issues one).
+app.include_router(api_router, prefix="/api/v1", dependencies=[Depends(authorize)])
+app.include_router(auth.router, prefix="/api/v1")
 
 
 # ── Root redirect to docs ────────────────────────────────────────

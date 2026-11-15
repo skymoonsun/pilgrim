@@ -28,6 +28,7 @@ from app.models.proxy_fetch_log import ProxyFetchLog
 from app.models.proxy_validation_log import ProxyValidationLog
 from app.models.proxy_url_check_log import ProxyUrlCheckLog
 from app.models.seed_version import SeedVersion
+from app.models.user import User
 
 __all__ = [
     "Base",
@@ -58,4 +59,5 @@ __all__ = [
     "ProxyValidationLog",
     "ProxyUrlCheckLog",
     "SeedVersion",
+    "User",
 ]

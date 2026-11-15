@@ -7,6 +7,8 @@ bounded name, non-negative delay, min concurrency) and the
 ``CrawlConfigService.update`` relies on.
 """
 
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
@@ -42,10 +44,11 @@ class TestCrawlConfigCreateDefaults:
             }},
             use_proxy=True,
             rotate_user_agent=False,
-            custom_delay="2.5",
+            custom_delay=Decimal("2.5"),
             max_concurrent=4,
         )
         assert config.fetch_options == fetch_options
+        # Decimal("2.5") == 2.5 at runtime; the schema stores Decimal.
         assert config.custom_delay == 2.5
         dumped = config.model_dump()
         assert dumped["extraction_spec"]["fields"]["title"]["type"] == "css"
@@ -60,8 +63,8 @@ class TestCrawlConfigCreateValidation:
 
     def test_unknown_profile_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            CrawlConfigCreate(
-                name="x", scraper_profile="teleport"
+            CrawlConfigCreate.model_validate(
+                {"name": "x", "scraper_profile": "teleport"}
             )
 
     def test_profiles_accepted(self) -> None:
@@ -73,10 +76,12 @@ class TestCrawlConfigCreateValidation:
 
     def test_negative_custom_delay_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            CrawlConfigCreate(name="x", custom_delay="-0.1")
+            CrawlConfigCreate.model_validate(
+                {"name": "x", "custom_delay": "-0.1"}
+            )
 
     def test_zero_custom_delay_allowed(self) -> None:
-        config = CrawlConfigCreate(name="x", custom_delay=0)
+        config = CrawlConfigCreate(name="x", custom_delay=Decimal(0))
         assert config.custom_delay == 0
 
     def test_zero_max_concurrent_rejected(self) -> None:

@@ -28,7 +28,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
-from collections.abc import AsyncIterator  # noqa: E402
+from collections.abc import AsyncIterator, Iterator  # noqa: E402
 
 import pytest  # noqa: E402
 from sqlalchemy import StaticPool  # noqa: E402
@@ -109,3 +109,20 @@ def pytest_collection_modifyitems(
     for item in items:
         if "integration" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_cache() -> Iterator[None]:
+    """Rebuild the cached ``Settings`` from clean env per test.
+
+    Env-driven tests (auth mode, rate limit, cache backends) mutate
+    ``os.environ`` via monkeypatch; the ``lru_cache``d ``get_settings``
+    must never leak one test's env into the next, regardless of fixture
+    teardown order.  A fresh cache at every test start makes that
+    deterministic.
+    """
+    from app.core.config import get_settings as _get_settings
+
+    _get_settings.cache_clear()
+    yield
+    _get_settings.cache_clear()

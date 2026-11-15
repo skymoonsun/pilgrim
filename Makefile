@@ -4,7 +4,7 @@
 
 .PHONY: help dev dev-build dev-down dev-logs dev-ps \
         migrate migrate-create migrate-downgrade \
-        seed seed-status \
+        seed seed-status create-user \
         shell db-shell redis-shell \
         test lint \
         prod prod-build prod-down \
@@ -70,6 +70,9 @@ seed-status: ## Seed durumunu görüntüle
 	$(COMPOSE_DEV) exec api python -m app.cli.seed --status
 
 setup: migrate seed ## Migration + seed'leri sırayla uygula
+
+create-user: ## API kullanıcısı oluştur (make create-user USER=admin)
+	$(COMPOSE_DEV) exec api python -m app.cli.create_user $(USER)
 
 # ── Shell Access ─────────────────────────────────────────────────
 shell: ## API container'ında Python shell aç

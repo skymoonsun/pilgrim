@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_async_session
+from app.core.rate_limit import rate_limit_scope
 from app.schemas.crawl import CrawlJobCreate, CrawlJobListResponse, CrawlJobResponse
 from app.services.crawl_job_service import CrawlJobService
 from app.workers.tasks.scrape import run_crawl_job
@@ -31,6 +32,7 @@ async def list_crawl_jobs(
 @router.post(
     "/jobs",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit_scope("crawl"))],
 )
 async def enqueue_crawl_job(
     body: CrawlJobCreate,

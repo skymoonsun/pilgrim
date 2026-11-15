@@ -12,6 +12,13 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import ProxyNotFoundError
 from app.models.enums import ProxyHealthStatus, ProxyProtocol
 from app.models.valid_proxy import ValidProxy
+from app.services.proxy_pool_stats import (
+    CANDIDATE_LIMIT,
+    expiring_window_bound,
+    success_weight,
+    utcnow,
+    weighted_pick,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +330,13 @@ class ValidProxyService:
         *exclude_ids* lets proxy rotation callers skip proxies that
         already failed for the current fetch, so each retry goes through
         a different proxy.
+
+        Selection weights candidates by their recent success ratio
+        (:func:`app.services.proxy_pool_stats.success_weight`) so proxies
+        that actually pass validation are picked more often than
+        all-failure survivors; a zero-success proxy keeps a small floor
+        weight instead of being unreachable.  Candidates are still drawn
+        randomly from SQL first, so pool position does not matter.
         """
         query = select(ValidProxy).where(
             ValidProxy.health == ProxyHealthStatus.HEALTHY
@@ -331,7 +345,54 @@ class ValidProxyService:
             query = query.where(ValidProxy.protocol == protocol)
         if exclude_ids:
             query = query.where(ValidProxy.id.not_in(exclude_ids))
-        query = query.order_by(func.random()).limit(1)
+        # Random candidate slice, then the weighted pick happens in Python.
+        query = query.order_by(func.random()).limit(CANDIDATE_LIMIT)
 
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        candidates = list(result.scalars().all())
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        return weighted_pick(candidates, [success_weight(p) for p in candidates])
+
+    async def get_pool_stats(
+        self,
+        *,
+        ttl_window_seconds: int = 3600,
+    ) -> dict[str, int]:
+        """Snapshot of the pool: totals, health split, TTL-expiry outlook.
+
+        ``expiring_soon`` counts only sourced proxies whose ``expires_at``
+        falls inside ``(now, now + ttl_window_seconds]`` — manual proxies
+        never expire and are excluded by construction.
+        """
+        now = utcnow()
+        bound = expiring_window_bound(now, ttl_window_seconds)
+
+        async def _count(query):  # noqa: ANN202 — local helper
+            result = await self.session.execute(query)
+            return int(result.scalar_one())
+
+        total = await _count(select(func.count()).select_from(ValidProxy))
+        healthy = await _count(
+            select(func.count())
+            .select_from(ValidProxy)
+            .where(ValidProxy.health == ProxyHealthStatus.HEALTHY)
+        )
+        expiring_soon = await _count(
+            select(func.count())
+            .select_from(ValidProxy)
+            .where(
+                ValidProxy.expires_at.isnot(None),
+                ValidProxy.expires_at > now,
+                ValidProxy.expires_at <= bound,
+            )
+        )
+        return {
+            "total": total,
+            "healthy": healthy,
+            "unhealthy": max(total - healthy, 0),
+            "expiring_soon": expiring_soon,
+            "ttl_window_seconds": ttl_window_seconds,
+        }

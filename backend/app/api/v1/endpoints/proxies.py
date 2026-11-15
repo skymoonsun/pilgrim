@@ -13,6 +13,7 @@ from app.schemas.proxy import (
     ManualProxyBulkCreate,
     ManualProxyCreate,
     ManualProxyCreateResult,
+    ProxyPoolStatsResponse,
     ValidProxyListResponse,
     ValidProxyResponse,
 )
@@ -91,6 +92,22 @@ async def list_valid_proxies(
         resp.source_name = p.source_config.name if p.source_config else None
         items.append(resp)
     return ValidProxyListResponse(items=items, total=total)
+
+
+@router.get("/stats", response_model=ProxyPoolStatsResponse)
+async def get_proxy_pool_stats(
+    ttl_window_seconds: int = Query(
+        3600,
+        ge=60,
+        le=86400,
+        description="Count proxies whose TTL expires within this window",
+    ),
+    session: AsyncSession = Depends(get_async_session),
+) -> ProxyPoolStatsResponse:
+    """Pool snapshot: total, healthy, unhealthy, and TTL-expiry outlook."""
+    service = ValidProxyService(session)
+    stats = await service.get_pool_stats(ttl_window_seconds=ttl_window_seconds)
+    return ProxyPoolStatsResponse.model_validate(stats)
 
 
 @router.get("/{proxy_id}", response_model=ValidProxyResponse)

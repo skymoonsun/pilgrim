@@ -149,15 +149,56 @@ The React dashboard runs on `http://localhost:3000` and provides:
 | `DELETE` | `/api/v1/proxy-sources/{id}` | Delete a proxy source config |
 | `POST` | `/api/v1/proxy-sources/{id}/fetch` | Trigger proxy fetch for a source |
 | `GET` | `/api/v1/proxies/` | List validated proxies (with filters) |
+| `GET` | `/api/v1/proxies/stats` | Pool stats (total / healthy / expiring soon) |
 | `GET` | `/api/v1/proxies/{id}` | Get proxy by ID |
 | `DELETE` | `/api/v1/proxies/{id}` | Delete a proxy |
 | `POST` | `/api/v1/proxies/{source_id}/validate` | Trigger proxy validation for a source |
+| `POST` | `/api/v1/auth/login` | Exchange credentials for a JWT (open) |
+| `GET` | `/api/v1/auth/me` | Current user (bearer required) |
+
+### Authentication
+
+Mutations (POST/PATCH/PUT/DELETE) always require a **JWT bearer token**. Reads
+(GET/HEAD/OPTIONS) stay open in `read-open` mode (default) so local,
+single-operator deployments work without ceremony; set `PILGRIM_AUTH_MODE=strict`
+to require tokens for reads as well. `POST /api/v1/auth/login` and `/health/*`
+are always public. Webhook callbacks keep their own HMAC `X-Signature` check and
+are not affected by the auth middleware.
+
+```bash
+# Create a user (prints the generated password once)
+make create-user USER=admin
+
+# Get a token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "<password>"}'
+
+# Use the token for mutations
+curl -X POST http://localhost:8000/api/v1/crawl-configs/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" ...
+```
+
+### Rate limiting & response cache
+
+Scrape/run endpoints are rate-limited per client IP (fixed-window 429s with a
+`Retry-After` header, backend `redis` / `memory` / `off`). Identical
+`(config_id, url)` scrapes within the TTL window replay the cached response and
+report `"cached": true` in the body. Both are env-configured — see the table
+below.
 
 ### Example: Create a Config & Scrape
 
 ```bash
+# 0. Get a bearer token (mutations are always authenticated)
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "<password>"}' | jq -r .access_token)
+
 # 1. Create a crawl configuration
 curl -X POST http://localhost:8000/api/v1/crawl-configs/ \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "example-titles",
@@ -170,8 +211,9 @@ curl -X POST http://localhost:8000/api/v1/crawl-configs/ \
     }
   }'
 
-# 2. Use the config to scrape a URL
+# 2. Use the config to scrape a URL (rate-limited, cached)
 curl -X POST http://localhost:8000/api/v1/scrape/ \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "config_id": "<config-uuid-from-step-1>",
@@ -237,6 +279,7 @@ pilgrim/
 | `make db-shell` | Open PostgreSQL shell |
 | `make redis-shell` | Open Redis CLI |
 | `make shell` | Open Python shell in API container |
+| `make create-user USER=admin` | Create an API user (password printed once) |
 | `make test` | Run test suite |
 | `make lint` | Run linter (ruff) |
 | `make help` | List all available commands |
@@ -269,7 +312,18 @@ All configuration is managed via environment variables. See [`.env.example`](.en
 | `CELERY_SOFT_TIME_LIMIT` | Task soft timeout (seconds) | `300` |
 | `CELERY_TIME_LIMIT` | Task hard timeout (seconds) | `360` |
 | `PILGRIM_AI_ENABLED` | Enable AI-powered features | `false` |
-| `PILGRIM_LLM_PROVIDER` | LLM provider (`ollama`) | `ollama` |
+| `PILGRIM_AUTH_MODE` | Auth gate (`read-open` / `strict`) | `read-open` |
+| `PILGRIM_JWT_SECRET` | JWT signing secret (change in prod) | dev placeholder |
+| `PILGRIM_JWT_TTL_SECONDS` | Token lifetime | `3600` |
+| `PILGRIM_RATE_LIMIT_BACKEND` | Rate limiter (`redis` / `memory` / `off`) | `redis` |
+| `PILGRIM_RATE_LIMIT_LIMIT` | Max requests per window per IP | `30` |
+| `PILGRIM_RATE_LIMIT_WINDOW_SECONDS` | Fixed window length | `60` |
+| `PILGRIM_SCRAPE_CACHE_BACKEND` | Scrape cache (`redis` / `memory` / `off`) | `redis` |
+| `PILGRIM_SCRAPE_CACHE_TTL_SECONDS` | Cache TTL for (config_id, url) | `600` |
+| `PILGRIM_LLM_PROVIDER` | LLM provider (`ollama` / `openai-compatible`) | `ollama` |
+| `LLM_BASE_URL` | OpenAI-compatible gateway base URL | — |
+| `LLM_API_KEY` | Gateway API key (omit header when empty) | — |
+| `LLM_MODEL` | Model name at the gateway | — |
 | `PILGRIM_OLLAMA_BASE_URL` | Ollama API base URL | `http://host.docker.internal:11434` |
 | `PILGRIM_OLLAMA_MODEL` | Ollama model name | `llama3.2` |
 | `PILGRIM_OLLAMA_TOKEN` | Ollama bearer token (optional) | — |
@@ -302,6 +356,24 @@ Pilgrim can generate extraction specs automatically using an LLM. Instead of wri
    ```
 3. The dashboard will show an **"Generate with AI"** button in the config creation page
 
+### Setup (OpenAI-compatible gateway)
+
+Any OpenAI-compatible `/chat/completions` endpoint works (OpenAI, a proxy
+gateway like [Manifold](https://github.com/Skyvern-AI/openai-proxy), vLLM,
+LiteLLM...). No SDK — plain `httpx` calls:
+
+```env
+PILGRIM_AI_ENABLED=true
+PILGRIM_LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=https://your-gateway.example.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4o-mini
+```
+
+With an empty `LLM_API_KEY` the `Authorization` header is omitted (handy for
+no-auth local gateways). Structured output follows the same JSON extraction
+contract as Ollama.
+
 ### API Usage
 
 ```bash
@@ -319,10 +391,10 @@ curl -X POST http://localhost:8000/api/v1/ai/generate-spec \
 
 ### Provider architecture
 
-The LLM integration uses a provider abstraction (`app/integrations/llm_base.py`). Ollama is the first implementation, but adding new providers (OpenAI, Anthropic, etc.) requires only:
+The LLM integration uses a provider abstraction (`app/integrations/llm_base.py`). Implementations: `ollama_client.py` (local Ollama) and `openai_client.py` (any OpenAI-compatible gateway). Adding a new provider requires only:
 
 1. A new subclass of `LLMProvider`
-2. A new `elif` branch in `create_llm_provider()`
+2. A new branch in `create_llm_provider()`
 3. Corresponding config settings
 
 No changes to the service or API layer are needed.

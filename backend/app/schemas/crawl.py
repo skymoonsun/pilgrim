@@ -32,6 +32,7 @@ class ScrapeResponse(BaseModel):
     data: dict | list | None = None
     error: str | None = None
     duration_ms: float | None = None
+    cached: bool = False
 
 
 # ── Async crawl job ──────────────────────────────────────────────
