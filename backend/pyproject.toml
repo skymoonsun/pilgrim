@@ -27,7 +27,9 @@ dependencies = [
     # Scraping — [fetchers] pulls all Python deps (curl_cffi, playwright,
     # browserforge, etc.).  Actual browser binaries are NOT installed here;
     # that happens only in the worker Dockerfile via `scrapling install`.
-    "scrapling[fetchers]>=0.4",
+    # >= 0.5 required: pilgrim's crawler factory targets the reworked
+    # 0.5 fetcher API (request-level kwargs, StealthyFetcher-only browsers).
+    "scrapling[fetchers]>=0.5",
 
     # HTTP client (for API clients, not HTML scraping)
     "httpx>=0.27.0",
@@ -45,7 +47,7 @@ dependencies = [
 
 [project.optional-dependencies]
 fetchers = [
-    "scrapling[fetchers]>=0.2.0",
+    "scrapling[fetchers]>=0.5",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -78,3 +80,9 @@ testpaths = ["tests"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Third-party scrapling ships py.typed but is not strict-clean; tests
+# import it to pin the fetcher API surface, so keep its internals out.
+module = ["scrapling.*", "curl_cffi.*"]
+ignore_errors = true
