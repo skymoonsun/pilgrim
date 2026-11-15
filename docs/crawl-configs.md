@@ -201,7 +201,7 @@ The `fetch_options` field is a JSON object passed to the Scrapling fetcher const
 | `timeout` | int | 30 | Request timeout in seconds |
 | `stealthy_headers` | bool | `true` | Use realistic browser headers |
 | `follow_redirects` | bool | `true` | Follow HTTP redirects |
-| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
+| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). **App-owned:** consumed by the worker (proxy rotation) and never forwarded to the Scrapling fetcher. See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
 
 ---
 
