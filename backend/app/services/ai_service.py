@@ -489,10 +489,11 @@ class AIService:
         work consistently.
 
         The basic ``Fetcher`` and ``FetcherSession`` profiles work in
-        the API container (no browser required).  ``StealthyFetcher``
-        and ``DynamicFetcher`` require browser binaries that live only
-        in the worker image — calling them here will raise an
-        ``ImportError`` that is surfaced as ``AIInvalidPageError``.
+        the API container (no browser required).  Browser profiles
+        (``stealth``/``dynamic`` → ``StealthyFetcher``) require browser
+        binaries that live only in the worker image — calling them here
+        will raise an ``ImportError`` that is surfaced as
+        ``AIInvalidPageError``.
         """
         try:
             from app.crawlers.factory import create_fetcher  # noqa: F811
