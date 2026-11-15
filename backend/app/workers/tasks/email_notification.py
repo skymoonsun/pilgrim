@@ -67,7 +67,9 @@ async def _send_email_notification(
 
     settings = get_settings()
     engine = create_async_engine(str(settings.database_url))
-    session_factory = async_sessionmaker(engine, class_=AsyncSession)
+    session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     try:
         async with session_factory() as session:
