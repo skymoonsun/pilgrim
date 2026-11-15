@@ -8,7 +8,11 @@ tests lock in the promised behaviour of ``use_proxy = true``:
 - the fetch is routed through a proxy from the healthy pool,
 - a failed proxy attempt rotates to a *different* proxy,
 - an exhausted pool falls back to a direct fetch and says so in the
-  job's ``result_summary['proxy']`` activity-log entry.
+  job's ``result_summary['proxy']`` activity-log entry,
+- the app-owned ``fetch_options.proxy_retries`` key is stripped before
+  ``create_fetcher`` (Scrapling constructors take strict kwargs and
+  raise ``TypeError`` on it) yet still drives the rotation budget via
+  ``resolve_proxy_attempts``.
 """
 
 from types import SimpleNamespace
@@ -20,7 +24,11 @@ import pytest
 
 from app.models.enums import CrawlJobStatus, ProxyProtocol, ScraperProfile
 from app.models.valid_proxy import ValidProxy
-from app.workers.tasks.scrape import run_crawl_job
+from app.workers.tasks.scrape import (
+    APP_OWNED_FETCH_KEYS,
+    run_crawl_job,
+    strip_app_owned_keys,
+)
 
 # ── Fakes ───────────────────────────────────────────────────────────
 
@@ -389,3 +397,138 @@ class TestRunJobProxyRotation:
         proxy_summary = failure_kwargs["result_summary"]["proxy"]
         assert proxy_summary["fell_back_direct"] is True
         assert proxy_summary["attempts"][0]["ok"] is False
+
+
+# ── App-owned fetch-option keys (proxy_retries) ─────────────────────
+
+
+class TestStripAppOwnedFetchKeys:
+    def test_proxy_retries_is_the_only_app_owned_key(self) -> None:
+        assert APP_OWNED_FETCH_KEYS == frozenset({"proxy_retries"})
+
+    def test_strips_proxy_retries_and_keeps_scrapling_kwargs(self) -> None:
+        raw: dict[str, Any] = {
+            "timeout": 5,
+            "proxy_retries": 3,
+            "impersonate": "chrome_131",
+        }
+        assert strip_app_owned_keys(raw) == {
+            "timeout": 5,
+            "impersonate": "chrome_131",
+        }
+
+    def test_input_dict_is_not_mutated(self) -> None:
+        raw: dict[str, Any] = {"proxy_retries": 2, "timeout": 10}
+        strip_app_owned_keys(raw)
+        assert raw == {"proxy_retries": 2, "timeout": 10}
+
+    def test_missing_and_empty_options(self) -> None:
+        assert strip_app_owned_keys(None) == {}
+        assert strip_app_owned_keys({}) == {}
+
+
+class TestProxyRetriesRegression:
+    def test_http_session_constructor_accepts_stripped_options(self) -> None:
+        """The real Scrapling constructor must not see ``proxy_retries``.
+
+        Scrapling 0.5's ``FetcherSession`` takes strict keyword arguments
+        and raises ``TypeError`` on unknown keys — the exact crash that
+        used to kill every ``http_session`` config carrying a
+        ``proxy_retries`` fetch option before any fetch happened. If a
+        future Scrapling version accepts the key, this test will fail on
+        the raises-check: drop that check then, the stripping must stay.
+        """
+        pytest.importorskip("scrapling.fetchers")
+        from scrapling.fetchers import FetcherSession
+
+        from app.crawlers.factory import create_fetcher
+
+        fetcher = create_fetcher(
+            ScraperProfile.HTTP_SESSION,
+            strip_app_owned_keys({"proxy_retries": 3, "timeout": 5}),
+        )
+        assert isinstance(fetcher, FetcherSession)
+
+        # The raw key must still be rejected by the constructor, exactly
+        # as observed on scrapling 0.5.1 when the bug was found.
+        with pytest.raises(TypeError, match="proxy_retries"):
+            FetcherSession(proxy_retries=3)  # type: ignore[call-arg]
+
+    def test_proxy_retries_drives_rotation_but_never_reaches_create_fetcher(
+        self, eager_celery: Any
+    ) -> None:
+        first = make_proxy(ip="203.0.113.1")
+        second = make_proxy(ip="203.0.113.2")
+        config = SimpleNamespace(
+            scraper_profile=ScraperProfile.HTTP_SESSION,
+            fetch_options={"timeout": 30, "proxy_retries": 1},
+            extraction_spec={"fields": {}},
+            use_proxy=True,
+        )
+        job = SimpleNamespace(
+            id=uuid4(),
+            target_url="https://example.com/page",
+            crawl_configuration_id=uuid4(),
+            crawl_configuration=config,
+        )
+        session = _FakeSession(config)
+        fetcher = _RecordingFetcher({"http://203.0.113.1:8080"})
+        proxy_service = _FakeProxyService([first, second])
+        job_service: dict[str, _FakeJobService] = {}
+        captured_fetch_options: list[dict[str, Any]] = []
+
+        class _BoundJobService(_FakeJobService):
+            def __init__(self, session_arg: Any) -> None:
+                super().__init__(session_arg, job)
+                job_service["instance"] = self
+
+        def _capturing_create_fetcher(
+            profile: Any, options: dict[str, Any] | None = None
+        ) -> Any:
+            captured_fetch_options.append(dict(options or {}))
+            return fetcher
+
+        fake_engine = SimpleNamespace(dispose=_async_noop)
+
+        with (
+            patch(
+                "sqlalchemy.ext.asyncio.create_async_engine",
+                return_value=fake_engine,
+            ),
+            patch(
+                "sqlalchemy.ext.asyncio.async_sessionmaker",
+                side_effect=_sessionmaker_stub(session),
+            ),
+            patch(
+                "app.services.crawl_job_service.CrawlJobService",
+                _BoundJobService,
+            ),
+            patch(
+                "app.services.valid_proxy_service.ValidProxyService",
+                lambda session_arg: proxy_service,
+            ),
+            patch(
+                "app.crawlers.factory.create_fetcher",
+                _capturing_create_fetcher,
+            ),
+        ):
+            run_crawl_job.apply(args=[str(job.id)])
+
+        statuses = [status for status, _ in job_service["instance"].updates]
+        assert statuses == [CrawlJobStatus.RUNNING, CrawlJobStatus.SUCCEEDED]
+
+        # 1. ``create_fetcher`` saw only genuine Scrapling kwargs — the
+        #    app-owned key never reached the strict-kwargs constructor.
+        assert captured_fetch_options == [{"timeout": 30}]
+
+        # 2. The RAW options still governed the rotation budget: with
+        #    ``proxy_retries``=1 the single failing proxy yields exactly
+        #    one proxied attempt followed by the documented direct
+        #    fallback — the second healthy proxy is never tried.
+        assert [(url, kwargs.get("proxy")) for url, kwargs in fetcher.calls] == [
+            ("https://example.com/page", "http://203.0.113.1:8080"),
+            ("https://example.com/page", None),
+        ]
+
+        # 3. The config's fetch_options were not mutated in place.
+        assert config.fetch_options == {"timeout": 30, "proxy_retries": 1}
