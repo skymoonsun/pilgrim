@@ -66,4 +66,13 @@ def create_llm_provider() -> LLMProvider:
             token=settings.ollama_token,
         )
 
+    if provider == "openai-compatible":
+        from app.integrations.openai_client import OpenAICompatibleProvider
+
+        return OpenAICompatibleProvider(
+            base_url=settings.llm_base_url,
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+        )
+
     raise ValueError(f"Unknown LLM provider: {provider}")

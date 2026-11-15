@@ -9,6 +9,10 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
 
+    # Auth
+    "pyjwt>=2.15.1",
+    "passlib>=1.7.4",
+
     # Database
     "sqlalchemy[asyncio]>=2.0.30",
     "asyncpg>=0.29.0",
@@ -88,6 +92,12 @@ strict = true
 # import it to pin the fetcher API surface, so keep its internals out.
 module = ["scrapling.*", "curl_cffi.*"]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# passlib has no type stubs; it is only imported by app.core.security
+# (covered by the app.* tolerance below), never directly by tests.
+module = ["passlib.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # Legacy code (pre-test-core) still has hundreds of pre-existing strict
