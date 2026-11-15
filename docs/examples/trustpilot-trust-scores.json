@@ -1,0 +1,49 @@
+{
+  "source": "trustpilot",
+  "scale": 5,
+  "scores": {
+    "eneba.com": {
+      "score": 4.4,
+      "reviews": 334039,
+      "stars": 4.5,
+      "name": "Eneba",
+      "url": "https://www.trustpilot.com/review/eneba.com"
+    },
+    "instant-gaming.com": {
+      "score": 4.7,
+      "reviews": 846866,
+      "stars": 4.5,
+      "name": "Instant Gaming",
+      "url": "https://www.trustpilot.com/review/instant-gaming.com"
+    },
+    "kinguin.net": {
+      "score": 4.6,
+      "reviews": 125805,
+      "stars": 4.5,
+      "name": "Kinguin.net",
+      "url": "https://www.trustpilot.com/review/kinguin.net"
+    },
+    "gog.com": {
+      "score": 4.5,
+      "reviews": 3818,
+      "stars": 4.5,
+      "name": "GOG.COM",
+      "url": "https://www.trustpilot.com/review/gog.com"
+    },
+    "greenmangaming.com": {
+      "score": 4.7,
+      "reviews": 64577,
+      "stars": 4.5,
+      "name": "Green Man Gaming Ltd",
+      "url": "https://www.trustpilot.com/review/greenmangaming.com"
+    },
+    "steampowered.com": {
+      "score": 1.9,
+      "reviews": 4834,
+      "stars": 2,
+      "name": "Steam",
+      "url": "https://www.trustpilot.com/review/steampowered.com"
+    }
+  },
+  "failed": []
+}

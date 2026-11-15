@@ -395,3 +395,19 @@ Updating a config via `PATCH` changes it in place. For auditable changes, consid
 ```
 
 > Remember: `dynamic` profile requires the **worker** container with browser dependencies.
+
+### Trustpilot seller trust score (domain → score JSON)
+
+Seed `0003_trustpilot_trust_score` registers the `trustpilot-trust-score` config. The
+target URL is `https://www.trustpilot.com/review/<domain>`
+(`app.services.trust_scores.trustpilot_review_url`). The page sits behind an AWS WAF bot
+challenge — a plain `fetcher` gets a 403 interstitial — so the config uses the `stealth`
+profile (needs the **worker** image with browser dependencies). Scores are read from the
+embedded `__NEXT_DATA__` (`json_path` fields), then
+`app.services.trust_scores.build_trust_scores()` turns the per-domain results into the
+document c4game-core consumes (see `docs/examples/trustpilot-trust-scores.json`, captured
+from real pages; unusable pages are listed under `failed`, never invented).
+
+The only real-network test is double-gated:
+`PILGRIM_RUN_INTEGRATION=1 PILGRIM_TRUSTPILOT_LIVE=1 pytest tests/test_trust_scores.py -k live`
+(optional `PILGRIM_TRUSTPILOT_CHROME=/path/to/chrome`, `PILGRIM_TRUSTPILOT_DOMAIN=...`).

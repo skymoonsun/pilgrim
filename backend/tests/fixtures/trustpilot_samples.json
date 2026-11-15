@@ -1,0 +1,53 @@
+{
+  "_note": "businessUnit subset captured live from https://www.trustpilot.com/review/<domain> on 2026-11-16 (headless Chromium via StealthyFetcher). Real values, not synthetic.",
+  "units": {
+    "eneba.com": {
+      "displayName": "Eneba",
+      "identifyingName": "eneba.com",
+      "numberOfReviews": 334039,
+      "stars": 4.5,
+      "trustScore": 4.4,
+      "websiteUrl": "https://www.eneba.com/"
+    },
+    "instant-gaming.com": {
+      "displayName": "Instant Gaming",
+      "identifyingName": "instant-gaming.com",
+      "numberOfReviews": 846866,
+      "stars": 4.5,
+      "trustScore": 4.7,
+      "websiteUrl": "https://www.instant-gaming.com"
+    },
+    "kinguin.net": {
+      "displayName": "Kinguin.net",
+      "identifyingName": "kinguin.net",
+      "numberOfReviews": 125805,
+      "stars": 4.5,
+      "trustScore": 4.6,
+      "websiteUrl": "https://www.kinguin.net"
+    },
+    "www.gog.com": {
+      "displayName": "GOG.COM",
+      "identifyingName": "www.gog.com",
+      "numberOfReviews": 3818,
+      "stars": 4.5,
+      "trustScore": 4.5,
+      "websiteUrl": "https://www.gog.com"
+    },
+    "www.greenmangaming.com": {
+      "displayName": "Green Man Gaming Ltd",
+      "identifyingName": "www.greenmangaming.com",
+      "numberOfReviews": 64577,
+      "stars": 4.5,
+      "trustScore": 4.7,
+      "websiteUrl": "https://www.greenmangaming.com"
+    },
+    "www.steampowered.com": {
+      "displayName": "Steam",
+      "identifyingName": "www.steampowered.com",
+      "numberOfReviews": 4834,
+      "stars": 2,
+      "trustScore": 1.9,
+      "websiteUrl": "https://www.steampowered.com"
+    }
+  }
+}
