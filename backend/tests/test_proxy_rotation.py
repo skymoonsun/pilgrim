@@ -5,6 +5,7 @@ database imports, so these tests run entirely in memory.
 """
 
 import json
+import logging
 from collections.abc import Collection
 from typing import Any
 from uuid import UUID, uuid4
@@ -304,6 +305,42 @@ class TestFetchWithProxyRotation:
         # The caller still gets the report for its activity log.
         assert report.fell_back_direct is True
         assert report.attempts[0].ok is False
+
+    async def test_failed_attempt_log_is_credential_free(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The worker WARNING emits the sanitized error, never the raw one."""
+        proxy = make_proxy(username="alice", password="s3cret")
+
+        def fetch(kwargs: dict[str, Any]) -> str:
+            if kwargs:
+                raise ConnectionError(
+                    "authentication failed for http://alice:s3cret@203.0.113.10:8080"
+                )
+            return "direct-ok"  # fallback fetch succeeds → no propagation
+
+        report = ProxyRotationReport()
+        with caplog.at_level(logging.WARNING, logger="app.services.proxy_rotation"):
+            await fetch_with_proxy_rotation(
+                fetch=fetch,
+                select_proxy=_StaticPool([proxy]),
+                profile=ScraperProfile.FETCHER,
+                max_attempts=1,
+                report=report,
+            )
+
+        messages = [record.getMessage() for record in caplog.records]
+        # Credentials are masked everywhere, including the fallback warning.
+        assert all("alice" not in message for message in messages)
+        assert all("s3cret" not in message for message in messages)
+        [attempt_message] = [
+            message for message in messages if "Proxy fetch attempt" in message
+        ]
+        # Credentials are masked in the attempt log line...
+        assert "***" in attempt_message
+        # ...while the failure stays diagnosable via the safe label.
+        assert "http://203.0.113.10:8080 (authenticated)" in attempt_message
 
     async def test_report_is_json_safe_and_credential_free(self) -> None:
         proxy = make_proxy(username="alice", password="s3cret")
