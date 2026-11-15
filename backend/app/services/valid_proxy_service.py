@@ -1,6 +1,7 @@
 """CRUD operations for ValidProxy."""
 
 import logging
+from collections.abc import Collection
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -314,13 +315,22 @@ class ValidProxyService:
     async def get_random_healthy(
         self,
         protocol: ProxyProtocol | None = None,
+        *,
+        exclude_ids: Collection[UUID] | None = None,
     ) -> ValidProxy | None:
-        """Get a random healthy proxy, optionally filtered by protocol."""
+        """Get a random healthy proxy, optionally filtered by protocol.
+
+        *exclude_ids* lets proxy rotation callers skip proxies that
+        already failed for the current fetch, so each retry goes through
+        a different proxy.
+        """
         query = select(ValidProxy).where(
             ValidProxy.health == ProxyHealthStatus.HEALTHY
         )
         if protocol is not None:
             query = query.where(ValidProxy.protocol == protocol)
+        if exclude_ids:
+            query = query.where(ValidProxy.id.not_in(exclude_ids))
         query = query.order_by(func.random()).limit(1)
 
         result = await self.session.execute(query)

@@ -33,24 +33,43 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
     1. Load ``CrawlJob`` and its ``CrawlConfiguration`` from the DB.
     2. Update status → RUNNING.
     3. Fetch the target URL via Scrapling (using the config profile).
+       When the config has ``use_proxy = true``, the fetch runs through
+       the healthy proxy pool with rotation and a direct-fetch fallback
+       (see ``app.services.proxy_rotation``).
     4. Apply extraction rules.
     5. Persist ``CrawlJobResult`` rows.
     6. Update status → SUCCEEDED (or FAILED on error).
+
+    Proxy usage (which proxy, how many attempts, outcome) is recorded in
+    the job's ``result_summary['proxy']`` so it shows up in the activity
+    feed, with credentials always masked.
     """
     import asyncio
+    from collections.abc import Collection
+    from uuid import UUID
 
     async def _run() -> dict[str, str]:
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-        from sqlalchemy.orm import sessionmaker as async_sessionmaker_compat
-        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from typing import Any
+
+        from sqlalchemy.ext.asyncio import (
+            AsyncSession,
+            async_sessionmaker,
+            create_async_engine,
+        )
 
         from app.core.config import get_settings
-        from app.crawlers.factory import create_fetcher
         from app.crawlers.extraction import extract_data
-        from app.models.crawl_job import CrawlJob
+        from app.crawlers.factory import create_fetcher
         from app.models.crawl_job_result import CrawlJobResult
         from app.models.enums import CrawlJobStatus
+        from app.models.valid_proxy import ValidProxy
         from app.services.crawl_job_service import CrawlJobService
+        from app.services.proxy_rotation import (
+            ProxyRotationReport,
+            fetch_with_proxy_rotation,
+            resolve_proxy_attempts,
+        )
+        from app.services.valid_proxy_service import ValidProxyService
 
         settings = get_settings()
         engine = create_async_engine(str(settings.database_url))
@@ -70,18 +89,42 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
             )
 
             start = time.monotonic()
+            proxy_report: ProxyRotationReport | None = None
             try:
                 # 3. Load config (eagerly loaded via relationship)
                 config = await session.run_sync(
                     lambda s: job.crawl_configuration
                 )
 
-                # 4. Fetch
+                # 4. Fetch (through the healthy proxy pool when configured)
                 fetcher = create_fetcher(
                     config.scraper_profile,
                     config.fetch_options or {},
                 )
-                response = fetcher.get(job.target_url)
+                if config.use_proxy:
+                    proxy_report = ProxyRotationReport()
+                    proxy_service = ValidProxyService(session)
+
+                    async def _select_proxy(
+                        exclude: Collection[UUID],
+                    ) -> ValidProxy | None:
+                        return await proxy_service.get_random_healthy(
+                            exclude_ids=exclude,
+                        )
+
+                    response = await fetch_with_proxy_rotation(
+                        fetch=lambda kwargs: fetcher.get(
+                            job.target_url, **kwargs
+                        ),
+                        select_proxy=_select_proxy,
+                        profile=config.scraper_profile,
+                        max_attempts=resolve_proxy_attempts(
+                            config.fetch_options
+                        ),
+                        report=proxy_report,
+                    )
+                else:
+                    response = fetcher.get(job.target_url)
                 http_status = getattr(response, "status", None)
 
                 # 5. Extract
@@ -120,17 +163,31 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                 session.add(result)
 
                 duration_ms = round((time.monotonic() - start) * 1000, 2)
+                result_summary: dict[str, Any] = {
+                    "fields_extracted": len(data),
+                    "duration_ms": duration_ms,
+                }
+                if proxy_report is not None:
+                    result_summary["proxy"] = proxy_report.summary()
                 await service.update_status(
                     job.id,
                     CrawlJobStatus.SUCCEEDED,
-                    result_summary={
-                        "fields_extracted": len(data),
-                        "duration_ms": duration_ms,
-                    },
+                    result_summary=result_summary,
                 )
-                logger.info(
-                    "Job %s succeeded in %.1fms", crawl_job_id, duration_ms
-                )
+                if proxy_report is not None:
+                    logger.info(
+                        "Job %s succeeded in %.1fms via proxy %s "
+                        "(fell_back_direct=%s, attempts=%d)",
+                        crawl_job_id,
+                        duration_ms,
+                        proxy_report.used_proxy or "none",
+                        proxy_report.fell_back_direct,
+                        len(proxy_report.attempts),
+                    )
+                else:
+                    logger.info(
+                        "Job %s succeeded in %.1fms", crawl_job_id, duration_ms
+                    )
 
                 # ── Callback chain ───────────────────────────────
                 await _maybe_enqueue_callback(session, job)
@@ -145,11 +202,16 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
 
             except Exception as exc:
                 duration_ms = round((time.monotonic() - start) * 1000, 2)
+                failure_summary: dict[str, Any] = {"duration_ms": duration_ms}
+                if proxy_report is not None:
+                    # Keep the proxy story visible on failed jobs too —
+                    # which proxies were tried and why we fell back.
+                    failure_summary["proxy"] = proxy_report.summary()
                 await service.update_status(
                     job.id,
                     CrawlJobStatus.FAILED,
                     error_message=str(exc),
-                    result_summary={"duration_ms": duration_ms},
+                    result_summary=failure_summary,
                 )
                 logger.error("Job %s failed: %s", crawl_job_id, exc)
 
