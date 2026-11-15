@@ -213,7 +213,7 @@ factory applies them as request-level kwargs):
 | `timeout` | int | 30 | Request timeout in seconds (for browser profiles Pilgrim converts it to scrapling's milliseconds) |
 | `stealthy_headers` | bool | `true` | Use realistic browser headers |
 | `follow_redirects` | bool | `true` | Follow HTTP redirects |
-| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). Never sent to scrapling; consumed by the rotation logic itself. See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
+| `proxy_retries` | int | 3 | With `use_proxy: true` — max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). **App-owned:** consumed by the worker (proxy rotation) and never forwarded to the Scrapling fetcher. See [Proxy Management Guide](proxy-management.md#proxy-rotation). |
 
 Unknown keys for the chosen profile (e.g. `impersonate` on `stealth`,
 `headless` on `fetcher`) are logged as warnings and ignored by the fetcher

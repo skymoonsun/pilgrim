@@ -554,7 +554,7 @@ Proxy credentials are **always masked** in these records and in worker logs — 
 
 | Fetch option | Type | Default | Description |
 |--------------|------|---------|-------------|
-| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5) |
+| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). App-owned: the worker reads it from the raw `fetch_options` before fetching and never passes it to the Scrapling fetcher constructor. |
 
 Each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option.
 
