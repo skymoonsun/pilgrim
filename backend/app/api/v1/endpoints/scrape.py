@@ -23,6 +23,12 @@ async def scrape(
 
     Use this for quick tests.  For production workloads prefer the
     asynchronous ``POST /api/v1/crawl/jobs`` endpoint.
+
+    When the config has ``use_proxy: true``, the fetch is routed
+    through the healthy proxy pool (rotation to a different proxy on
+    failure, direct fallback on an exhausted pool) and the
+    credential-free proxy story is returned in the response's
+    ``proxy`` field — the same behaviour as the async crawl jobs.
     """
     service = ScrapeService(session)
     return await service.execute(config_id=body.config_id, url=body.url)

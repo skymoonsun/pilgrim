@@ -11,36 +11,18 @@ import logging
 import time
 from typing import Any
 
+from app.crawlers.fetch_options import (
+    APP_OWNED_FETCH_KEYS,
+    strip_app_owned_keys,
+)
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-# ── App-owned fetch-option keys ─────────────────────────────────────
-# Keys of ``CrawlConfiguration.fetch_options`` that Pilgrim consumes
-# itself and must therefore NEVER be forwarded to a Scrapling fetcher
-# constructor: Scrapling's fetchers take strict keyword arguments, so
-# an app-owned key raises ``TypeError`` at ``create_fetcher`` time and
-# crashes every fetch before it starts (e.g.
-# ``FetcherSession(**{"proxy_retries": 3})`` on scrapling 0.5).
-# ``proxy_retries`` (the proxy-rotation budget) is the one app-owned
-# key so far: it is read from the RAW options by
-# ``app.services.proxy_rotation.resolve_proxy_attempts``. Any other
-# key is a genuine Scrapling kwarg (``timeout``, ``impersonate``,
-# ``stealthy_headers``, ``follow_redirects``, ...) and passes through.
-APP_OWNED_FETCH_KEYS: frozenset[str] = frozenset({"proxy_retries"})
-
-
-def strip_app_owned_keys(fetch_options: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a copy of *fetch_options* without the app-owned keys.
-
-    The input dict is NOT mutated — the raw options stay available
-    (``resolve_proxy_attempts`` reads ``proxy_retries`` from them).
-    """
-    return {
-        key: value
-        for key, value in (fetch_options or {}).items()
-        if key not in APP_OWNED_FETCH_KEYS
-    }
+# Re-exported for backwards compatibility: the PR #6 tests import the
+# strip helpers from this module.  The canonical home for both names is
+# ``app.crawlers.fetch_options``; every service imports them from there.
+__all__ = ["APP_OWNED_FETCH_KEYS", "strip_app_owned_keys", "run_crawl_job"]
 
 
 @celery_app.task(

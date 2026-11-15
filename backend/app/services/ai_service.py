@@ -30,6 +30,7 @@ from app.core.exceptions import (
     AIInvalidPageError,
 )
 from app.crawlers.extraction import assess_value_quality, extract_data_with_metadata
+from app.crawlers.fetch_options import strip_app_owned_keys
 from app.crawlers.html_sanitizer import sanitize_html, truncate_html
 from app.integrations.llm_base import LLMProvider, create_llm_provider
 from app.models.enums import ScraperProfile
@@ -332,7 +333,13 @@ class AIService:
         try:
             from app.crawlers.factory import create_fetcher  # noqa: F811
 
-            fetcher = create_fetcher(scraper_profile, fetch_options=fetch_options or {})
+            # Strip app-owned keys (``proxy_retries``) so they never
+            # reach the strict-kwargs Scrapling constructor; the caller's
+            # ``fetch_options`` dict stays untouched.
+            fetcher = create_fetcher(
+                scraper_profile,
+                fetch_options=strip_app_owned_keys(fetch_options or {}),
+            )
             response = fetcher.get(url)
         except ImportError as exc:
             raise AIInvalidPageError(
@@ -489,10 +496,11 @@ class AIService:
         work consistently.
 
         The basic ``Fetcher`` and ``FetcherSession`` profiles work in
-        the API container (no browser required).  ``StealthyFetcher``
-        and ``DynamicFetcher`` require browser binaries that live only
-        in the worker image — calling them here will raise an
-        ``ImportError`` that is surfaced as ``AIInvalidPageError``.
+        the API container (no browser required).  Browser profiles
+        (``stealth``/``dynamic`` → ``StealthyFetcher``) require browser
+        binaries that live only in the worker image — calling them here
+        will raise an ``ImportError`` that is surfaced as
+        ``AIInvalidPageError``.
         """
         try:
             from app.crawlers.factory import create_fetcher  # noqa: F811
