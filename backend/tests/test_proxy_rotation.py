@@ -140,9 +140,9 @@ class TestBuildFetchProxyKwargs:
 class TestFetchWithProxyRotation:
     async def test_first_proxy_succeeds(self) -> None:
         proxy = make_proxy()
-        seen_kwargs: list[dict] = []
+        seen_kwargs: list[dict[str, Any]] = []
 
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             seen_kwargs.append(kwargs)
             return "response"
 
@@ -167,7 +167,7 @@ class TestFetchWithProxyRotation:
         second = make_proxy(ip="203.0.113.2")
         fetch_urls: list[str] = []
 
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             fetch_urls.append(kwargs["proxy"])
             if kwargs["proxy"] == "http://203.0.113.1:8080":
                 raise ConnectionError("proxy timed out")
@@ -217,7 +217,7 @@ class TestFetchWithProxyRotation:
     async def test_exhausted_pool_falls_back_to_direct(self) -> None:
         only_proxy = make_proxy()
 
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             if kwargs:
                 raise ConnectionError("proxy unreachable")
             return "direct-ok"
@@ -243,7 +243,7 @@ class TestFetchWithProxyRotation:
     ) -> None:
         proxies = [make_proxy(ip="203.0.113.1"), make_proxy(ip="203.0.113.2")]
 
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             if kwargs:
                 raise ConnectionError("all proxies are bad")
             return "direct-ok"
@@ -269,7 +269,7 @@ class TestFetchWithProxyRotation:
         # Pool would happily serve new proxies; the attempt budget must cap
         # the loop (no infinite rotation). The final direct fetch also
         # fails, so the last error propagates to the caller.
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             if kwargs:
                 raise ConnectionError("proxy nope")
             raise ConnectionError("direct down")
@@ -289,7 +289,7 @@ class TestFetchWithProxyRotation:
         assert len(report.attempts) == 2
 
     async def test_direct_fetch_failure_raises_but_keeps_report(self) -> None:
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             raise RuntimeError("target is down")
 
         report = ProxyRotationReport()
@@ -345,7 +345,7 @@ class TestFetchWithProxyRotation:
     async def test_report_is_json_safe_and_credential_free(self) -> None:
         proxy = make_proxy(username="alice", password="s3cret")
 
-        def fetch(kwargs: dict) -> str:
+        def fetch(kwargs: dict[str, Any]) -> str:
             if kwargs:
                 raise ConnectionError("proxy http://alice:s3cret@host exploded")
             return "direct-ok"
