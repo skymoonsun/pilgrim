@@ -409,7 +409,7 @@ Every proxied job records its proxy story in `result_summary.proxy` (visible in 
 
 | Fetch option | Type | Default | Description |
 |--------------|------|---------|-------------|
-| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5) |
+| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). App-owned: the worker reads it from the raw `fetch_options` before fetching and never passes it to the Scrapling fetcher constructor. |
 
 Note: each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option. Proxy health is owned by the validation task; rotation only *reads* the pool and never mutates proxy health.
 

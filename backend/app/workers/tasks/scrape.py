@@ -9,10 +9,38 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+# ── App-owned fetch-option keys ─────────────────────────────────────
+# Keys of ``CrawlConfiguration.fetch_options`` that Pilgrim consumes
+# itself and must therefore NEVER be forwarded to a Scrapling fetcher
+# constructor: Scrapling's fetchers take strict keyword arguments, so
+# an app-owned key raises ``TypeError`` at ``create_fetcher`` time and
+# crashes every fetch before it starts (e.g.
+# ``FetcherSession(**{"proxy_retries": 3})`` on scrapling 0.5).
+# ``proxy_retries`` (the proxy-rotation budget) is the one app-owned
+# key so far: it is read from the RAW options by
+# ``app.services.proxy_rotation.resolve_proxy_attempts``. Any other
+# key is a genuine Scrapling kwarg (``timeout``, ``impersonate``,
+# ``stealthy_headers``, ``follow_redirects``, ...) and passes through.
+APP_OWNED_FETCH_KEYS: frozenset[str] = frozenset({"proxy_retries"})
+
+
+def strip_app_owned_keys(fetch_options: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a copy of *fetch_options* without the app-owned keys.
+
+    The input dict is NOT mutated — the raw options stay available
+    (``resolve_proxy_attempts`` reads ``proxy_retries`` from them).
+    """
+    return {
+        key: value
+        for key, value in (fetch_options or {}).items()
+        if key not in APP_OWNED_FETCH_KEYS
+    }
 
 
 @celery_app.task(
@@ -49,8 +77,6 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
     from uuid import UUID
 
     async def _run() -> dict[str, str]:
-        from typing import Any
-
         from sqlalchemy.ext.asyncio import (
             AsyncSession,
             async_sessionmaker,
@@ -99,9 +125,13 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                 )
 
                 # 4. Fetch (through the healthy proxy pool when configured)
+                # Strip app-owned keys (``proxy_retries``) so they never
+                # reach the strict-kwargs Scrapling constructor; the raw
+                # ``config.fetch_options`` stays intact for
+                # ``resolve_proxy_attempts`` below.
                 fetcher = create_fetcher(
                     config.scraper_profile,
-                    config.fetch_options or {},
+                    strip_app_owned_keys(config.fetch_options or {}),
                 )
                 if config.use_proxy:
                     proxy_report = ProxyRotationReport()
