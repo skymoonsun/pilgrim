@@ -166,7 +166,9 @@ are always public. Webhook callbacks keep their own HMAC `X-Signature` check and
 are not affected by the auth middleware.
 
 ```bash
-# Create a user (prints the generated password once)
+# Create a user (prints the generated password once — the safe path).
+# The optional `--password` CLI argument is visible in `ps` output and
+# shell history; the CLI prints a warning when it is passed.
 make create-user USER=admin
 
 # Get a token
@@ -183,10 +185,17 @@ curl -X POST http://localhost:8000/api/v1/crawl-configs/ \
 ### Rate limiting & response cache
 
 Scrape/run endpoints are rate-limited per client IP (fixed-window 429s with a
-`Retry-After` header, backend `redis` / `memory` / `off`). Identical
-`(config_id, url)` scrapes within the TTL window replay the cached response and
-report `"cached": true` in the body. Both are env-configured — see the table
-below.
+`Retry-After` header, backend `redis` / `memory` / `off`). `POST /auth/login`
+has its own `auth` bucket on the same window/limit settings, so credential
+guessing cannot exhaust the scrape/crawl budget (or hammer scrypt freely).
+Identical `(config_id, url)` scrapes within the TTL window replay the cached
+response and report `"cached": true` in the body. Both are env-configured — see
+the table below.
+
+Cache caveats (accepted trade-offs): the in-process `memory` cache is capped at
+2048 entries (FIFO eviction); editing a crawl config invalidates its cached
+responses only via TTL — add `config.updated_at` to the key if you need
+instant invalidation.
 
 ### Example: Create a Config & Scrape
 
@@ -194,7 +203,7 @@ below.
 # 0. Get a bearer token (mutations are always authenticated)
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "<password>"}' | jq -r .access_token)
+  -d '{"username": "admin", "password": "<password>"}' | jq -r .token)
 
 # 1. Create a crawl configuration
 curl -X POST http://localhost:8000/api/v1/crawl-configs/ \
@@ -313,7 +322,7 @@ All configuration is managed via environment variables. See [`.env.example`](.en
 | `CELERY_TIME_LIMIT` | Task hard timeout (seconds) | `360` |
 | `PILGRIM_AI_ENABLED` | Enable AI-powered features | `false` |
 | `PILGRIM_AUTH_MODE` | Auth gate (`read-open` / `strict`) | `read-open` |
-| `PILGRIM_JWT_SECRET` | JWT signing secret (change in prod) | dev placeholder |
+| `PILGRIM_JWT_SECRET` | JWT signing secret — ≥32 bytes enforced when set; unset → dev placeholder + startup warning (strict mode refuses to start on it) | dev placeholder (≥32 bytes) |
 | `PILGRIM_JWT_TTL_SECONDS` | Token lifetime | `3600` |
 | `PILGRIM_RATE_LIMIT_BACKEND` | Rate limiter (`redis` / `memory` / `off`) | `redis` |
 | `PILGRIM_RATE_LIMIT_LIMIT` | Max requests per window per IP | `30` |

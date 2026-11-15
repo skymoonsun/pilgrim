@@ -27,6 +27,13 @@ os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://pilgrim:pilgrim@localhost:5432/pilgrim"
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+# The unit suite must never depend on (or share state with) a real Redis:
+# when the dev box's Redis happens to be up, the default ``redis`` rate
+# backend accumulates counters across independent test runs — and a
+# once-stranded no-TTL key would block every later run.  Tests that
+# exercise the limiter set their backend explicitly; the rest gets the
+# deterministic in-process one.
+os.environ.setdefault("PILGRIM_RATE_LIMIT_BACKEND", "memory")
 
 from collections.abc import AsyncIterator, Iterator  # noqa: E402
 

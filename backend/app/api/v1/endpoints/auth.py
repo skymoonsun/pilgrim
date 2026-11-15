@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import rate_limit_scope
 from app.core.security import authenticate_user, create_access_token, get_current_user
 from app.db.database import get_async_session
 from app.models.user import User
@@ -18,7 +19,14 @@ from app.schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    # The login endpoint must stay reachable without a token, but it is
+    # exactly where credential guessing happens against a scrypt KDF —
+    # give it its own IP budget (same window/limit settings as scrape).
+    dependencies=[Depends(rate_limit_scope("auth"))],
+)
 async def login(
     body: LoginRequest,
     session: Annotated[AsyncSession, Depends(get_async_session)],

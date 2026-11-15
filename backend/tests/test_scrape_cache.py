@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password
 from app.db.database import get_async_session
 from app.integrations.cache import (
+    MAX_MEMORY_CACHE_ENTRIES,
     MemoryJsonCache,
     get_scrape_cache,
     reset_memory_cache,
@@ -186,3 +187,30 @@ class TestCacheKey:
     def test_key_hashes_raw_url(self) -> None:
         key = scrape_cache_key(_CFG, "https://x.example/p?token=secret")
         assert "token" not in key
+
+
+class TestMemoryCacheBound:
+    """The in-process cache cannot grow without limit (review nit #4)."""
+
+    async def test_evicts_oldest_beyond_cap(self) -> None:
+        cache = MemoryJsonCache(max_entries=2)
+        await cache.set("k-a", 1, 60)
+        await cache.set("k-b", 2, 60)
+        await cache.set("k-c", 3, 60)  # pushes past the cap
+        assert await cache.get("k-a") is None  # oldest evicted
+        assert await cache.get("k-c") == 3
+        assert len(cache._store) == 2
+
+    async def test_rewritten_key_counts_as_fresh(self) -> None:
+        cache = MemoryJsonCache(max_entries=2)
+        await cache.set("k-a", 1, 60)
+        await cache.set("k-b", 2, 60)
+        await cache.set("k-a", 10, 60)  # refresh eviction order
+        await cache.set("k-c", 3, 60)
+        assert await cache.get("k-a") == 10  # kept: rewritten after k-b
+        assert await cache.get("k-b") is None  # evicted as oldest
+        assert await cache.get("k-c") == 3
+
+    async def test_default_cap_is_bounded(self) -> None:
+        assert MemoryJsonCache()._max_entries == MAX_MEMORY_CACHE_ENTRIES
+        assert MAX_MEMORY_CACHE_ENTRIES > 0
