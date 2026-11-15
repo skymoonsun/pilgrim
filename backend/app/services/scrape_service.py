@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import CrawlingError
+from app.crawlers.fetch_options import strip_app_owned_keys
 from app.schemas.crawl import ScrapeResponse
 from app.services.crawl_config_service import CrawlConfigService
 
@@ -43,7 +44,10 @@ class ScrapeService:
 
             response = create_fetcher(
                 profile=config.scraper_profile,
-                fetch_options=config.fetch_options or {},
+                # Strip app-owned keys (``proxy_retries``) so they never
+                # reach the strict-kwargs Scrapling constructor; the raw
+                # ``config.fetch_options`` stays untouched.
+                fetch_options=strip_app_owned_keys(config.fetch_options or {}),
             ).get(url)
         except ImportError as exc:
             logger.error(
