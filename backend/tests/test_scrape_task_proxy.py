@@ -11,10 +11,11 @@ tests lock in the promised behaviour of ``use_proxy = true``:
   job's ``result_summary['proxy']`` activity-log entry.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -26,7 +27,7 @@ from app.workers.tasks.scrape import run_crawl_job
 
 
 class _FakeExecuteResult:
-    def scalars(self) -> list:
+    def scalars(self) -> list[Any]:
         return []
 
     def scalar_one_or_none(self) -> None:
@@ -73,7 +74,7 @@ class _FakeJobService:
     def __init__(self, session: Any, job: Any) -> None:
         self.session = session
         self.job = job
-        self.updates: list[tuple[Any, dict]] = []
+        self.updates: list[tuple[Any, dict[str, Any]]] = []
 
     async def get_by_id(self, job_id: Any) -> Any:
         return self.job
@@ -88,7 +89,7 @@ class _FakeProxyService:
 
     def __init__(self, proxies: list[ValidProxy]) -> None:
         self.proxies = proxies
-        self.exclusion_calls: list[set] = []
+        self.exclusion_calls: list[set[UUID]] = []
 
     async def get_random_healthy(
         self,
@@ -108,7 +109,7 @@ class _RecordingFetcher:
 
     def __init__(self, fail_proxies: set[str]) -> None:
         self.fail_proxies = fail_proxies
-        self.calls: list[tuple[str, dict]] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
     def get(self, url: str, **kwargs: Any) -> Any:
         self.calls.append((url, dict(kwargs)))
@@ -144,7 +145,7 @@ def make_config(*, use_proxy: bool = True) -> Any:
 
 
 @pytest.fixture
-def eager_celery():
+def eager_celery() -> Iterator[None]:
     """Run the task body in-process and propagate exceptions."""
     from app.workers.celery_app import celery_app
 
@@ -231,7 +232,9 @@ def _sessionmaker_stub(session: _FakeSession) -> Any:
 
 
 class TestRunJobProxyRotation:
-    def test_use_proxy_fetches_through_healthy_pool(self, eager_celery) -> None:
+    def test_use_proxy_fetches_through_healthy_pool(
+        self, eager_celery: Any
+    ) -> None:
         proxy = make_proxy()
         service, fetcher, _ = _run_task(
             make_config(use_proxy=True), [proxy], fail_proxies=set()
@@ -254,7 +257,9 @@ class TestRunJobProxyRotation:
         assert proxy_summary["fell_back_direct"] is False
         assert [a["ok"] for a in proxy_summary["attempts"]] == [True]
 
-    def test_failed_proxy_rotates_to_next_then_succeeds(self, eager_celery) -> None:
+    def test_failed_proxy_rotates_to_next_then_succeeds(
+        self, eager_celery: Any
+    ) -> None:
         first = make_proxy(ip="203.0.113.1")
         second = make_proxy(ip="203.0.113.2")
         service, fetcher, proxy_service = _run_task(
@@ -287,7 +292,7 @@ class TestRunJobProxyRotation:
         assert proxy_summary["fell_back_direct"] is False
 
     def test_exhausted_pool_falls_back_to_direct_and_logs_it(
-        self, eager_celery
+        self, eager_celery: Any
     ) -> None:
         only = make_proxy(ip="203.0.113.1")
         service, fetcher, _ = _run_task(
@@ -313,7 +318,9 @@ class TestRunJobProxyRotation:
         assert proxy_summary["fallback_reason"] == "no_healthy_proxy_available"
         assert proxy_summary["attempts"][0]["ok"] is False
 
-    def test_use_proxy_false_fetches_directly(self, eager_celery) -> None:
+    def test_use_proxy_false_fetches_directly(
+        self, eager_celery: Any
+    ) -> None:
         service, fetcher, proxy_service = _run_task(
             make_config(use_proxy=False), [make_proxy()], fail_proxies=set()
         )
@@ -328,7 +335,7 @@ class TestRunJobProxyRotation:
         assert "proxy" not in success_kwargs["result_summary"]
 
     def test_all_fetches_failing_marks_job_failed_with_proxy_story(
-        self, eager_celery
+        self, eager_celery: Any
     ) -> None:
         only = make_proxy(ip="203.0.113.1")
         job = SimpleNamespace(
