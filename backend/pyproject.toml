@@ -95,4 +95,3 @@ ignore_errors = true
 # cleanup lands. Everything else — tests in particular — is strict.
 module = ["app.*", "migrations.*", "seeds.*"]
 ignore_errors = true
-ignore_errors = true
