@@ -387,6 +387,32 @@ curl -X POST http://localhost:8000/api/v1/proxies/{source_id}/validate
 curl http://localhost:8000/api/v1/proxies/?health=healthy&limit=50
 ```
 
+### Proxy rotation
+
+Crawl configurations with `use_proxy: true` route their fetches through the healthy proxy pool (this applies to Celery-run crawl jobs — `pilgrim.scrape.run_job`):
+
+```bash
+# Enable proxy rotation on a crawl config
+curl -X PATCH http://localhost:8000/api/v1/crawl-configs/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"use_proxy": true}'
+```
+
+Per fetch, the worker:
+
+1. Picks a random healthy proxy via `get_random_healthy()` (`ORDER BY RANDOM() LIMIT 1`, health = `healthy`).
+2. Sends the request through it using Scrapling's request-level proxy support (static profiles take `proxy` + `proxy_auth`, browser profiles take a `proxy` dict).
+3. On failure, rotates to a **different** healthy proxy — failed proxies are excluded for the remainder of the fetch. Up to `fetch_options.proxy_retries` distinct proxies are tried (default 3, clamped to 1–5).
+4. If the pool has no healthy proxy left (empty pool, every proxy exhausted, or all attempts failed), the fetch falls back to a **direct (proxyless) request** and this is logged.
+
+Every proxied job records its proxy story in `result_summary.proxy` (visible in the activity feed): which proxy served the request, each attempt with its outcome and error, and whether a direct fallback was used. Proxy credentials are always masked in these records — only `protocol://ip:port` is ever shown.
+
+| Fetch option | Type | Default | Description |
+|--------------|------|---------|-------------|
+| `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5) |
+
+Note: each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option. Proxy health is owned by the validation task; rotation only *reads* the pool and never mutates proxy health.
+
 ### AI-powered proxy source analysis
 
 When AI is enabled (`PILGRIM_AI_ENABLED=true`), the "New Proxy Source" page shows an **AI Analysis** panel. Paste a proxy list URL and click **Analyze** — Pilgrim will:
