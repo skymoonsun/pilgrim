@@ -120,6 +120,9 @@ class TestScrapeServiceStripsAppOwnedKeys:
             id=uuid4(),
             scraper_profile=ScraperProfile.HTTP_SESSION,
             fetch_options=dict(RAW_OPTIONS),
+            # The sync path now always reads ``use_proxy``; keep this
+            # strip test on the direct (proxyless) fetch branch.
+            use_proxy=False,
             extraction_spec={"fields": {}},
         )
         captured: dict[str, Any] = {}
