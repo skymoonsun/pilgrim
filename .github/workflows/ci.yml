@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/ci.yml"]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: backend (ruff + mypy + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies (locked)
+        run: uv sync --locked --extra dev --python 3.12
+
+      # Full-repo lint/type cleanup is a tracked follow-up: app/,migrations/,
+      # seeds/ carry hundreds of pre-existing violations. Today the gate
+      # covers the test core (strict) and runs the whole pytest suite.
+      - name: Ruff (tests)
+        run: uv run ruff check tests
+
+      - name: Mypy (tests, strict; legacy app tolerated via pyproject overrides)
+        run: uv run mypy tests
+
+      # No real Postgres/Redis/network: conftest mounts in-memory SQLite and
+      # integration-marked tests skip unless PILGRIM_RUN_INTEGRATION=1.
+      - name: Pytest
+        run: uv run pytest -q
