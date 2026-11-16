@@ -411,3 +411,16 @@ from real pages; unusable pages are listed under `failed`, never invented).
 The only real-network test is double-gated:
 `PILGRIM_RUN_INTEGRATION=1 PILGRIM_TRUSTPILOT_LIVE=1 pytest tests/test_trust_scores.py -k live`
 (optional `PILGRIM_TRUSTPILOT_CHROME=/path/to/chrome`, `PILGRIM_TRUSTPILOT_DOMAIN=...`).
+
+#### ToS discipline & the degrade path
+
+Trustpilot's terms allow limited automated reading — the collection is built to stay
+inside it: **one request per merchant review page per run**, runs spaced **≥ 6 hours
+apart** (a daily cadence is the safe default), `robots.txt`-respecting `stealth` fetch
+with a real browser user-agent, and real scraping stays behind a feature gate
+(`PILGRIM_RUN_TRUSTPILOT=1`-style env gating on the schedule that submits these jobs).
+If Trustpilot refuses the traffic (WAF escalation, 403 walls, takedown), nothing breaks:
+c4game-core's admin API keeps a **manual-entry fallback**
+(`POST /api/admin/sellers/{id}/trust {score, count, url}`) so trust badges can be
+maintained by hand until collection resumes — see the trust section in c4game-core's
+README.
