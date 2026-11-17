@@ -246,13 +246,16 @@ class CallbackService:
 # ── Path resolver ────────────────────────────────────────────────
 
 
-def _resolve_path(context: dict, path: str) -> Any:
+def _resolve_path(context: dict, path: Any) -> Any:
     """Resolve a ``$.data.title``-style path against a context dict.
 
-    Returns ``None`` if any segment is missing.
+    Non-string ``path`` values (int/float/bool/None literals from
+    ``field_mapping``) are returned as-is — they are literal template
+    values, not paths.  For string paths, returns ``None`` if any
+    segment is missing.
     """
-    if not path.startswith("$."):
-        return path  # literal value
+    if not isinstance(path, str) or not path.startswith("$."):
+        return path  # literal value (int/float/bool allowed in templates)
 
     parts = path[2:].split(".")
     current: Any = context
