@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
-import { IconPlus, IconEye, IconEdit, IconFlask, IconTrash, IconConfig } from '../../components/icons/Icons';
+import { IconPlus, IconEye, IconEdit, IconFlask, IconTrash, IconConfig, IconLink } from '../../components/icons/Icons';
+import { adminSaveSourceUrl } from '../../lib/adminLink';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 
 export default function Configurations() {
@@ -102,6 +103,15 @@ export default function Configurations() {
                         <Link to={`/scrape?config=${config.id}`} className="action-btn" title="Test Scrape">
                           <IconFlask size={16} />
                         </Link>
+                        <a
+                          href={adminSaveSourceUrl(config.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="action-btn"
+                          title="Save to Admin"
+                        >
+                          <IconLink size={16} />
+                        </a>
                         <button
                           type="button"
                           className="action-btn action-btn--delete"

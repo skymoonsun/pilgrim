@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { configsApi } from '../../api/client';
 import type { CrawlConfig } from '../../api/client';
-import { IconConfig, IconFlask, IconEdit, IconTrash, IconRefresh } from '../../components/icons/Icons';
+import { IconConfig, IconFlask, IconEdit, IconTrash, IconRefresh, IconLink } from '../../components/icons/Icons';
+import { adminSaveSourceUrl } from '../../lib/adminLink';
 
 export default function ConfigDetail() {
   const { id } = useParams<{ id: string }>();
@@ -83,6 +84,15 @@ export default function ConfigDetail() {
           <Link to={`/configurations/${config.id}/edit`} className="btn btn-primary">
             <IconEdit size={16} /> Edit
           </Link>
+          <a
+            href={adminSaveSourceUrl(config.id)}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-secondary"
+            title="Onboard this crawl config as a source in the c4game admin panel"
+          >
+            <IconLink size={16} /> Save to Admin
+          </a>
           <Link to={`/scrape?config=${config.id}`} className="btn btn-secondary">
             <IconFlask size={16} /> Test Scrape
           </Link>

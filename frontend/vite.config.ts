@@ -11,7 +11,9 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://api:8000',
+        // Host-run dev/E2E override (e.g. VITE_API_PROXY=http://localhost:8011
+        // for the pilgrim-e2e stack); container default stays 'api:8000'.
+        target: process.env.VITE_API_PROXY || 'http://api:8000',
         changeOrigin: true,
       },
     },
