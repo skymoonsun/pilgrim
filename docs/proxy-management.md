@@ -320,6 +320,16 @@ After validation, each proxy's `avg_response_ms`, `success_count`/`failure_count
 | `healthy` | Green | Successfully connecting through the proxy |
 | `degraded` | Amber | Partial connectivity (some validation URLs failing) |
 | `unhealthy` | Red | No validation URLs are reachable through the proxy |
+| `pending` | Gray | Freshly fetched from a source, not validated yet (never picked for rotation) |
+
+> **Storage note (enum casing).** In PostgreSQL the enum labels are the Python
+> member **names** — `proxy_health_status_enum` = `HEALTHY`/`DEGRADED`/`UNHEALTHY`/`PENDING`,
+> `proxy_protocol_enum` = `HTTP`/`HTTPS`/`SOCKS4`/`SOCKS5`, `proxy_format_type_enum` =
+> `RAW_TEXT`/`JSON`/`XML`/`CSV` — because SQLAlchemy's `Enum(PyEnum)` persists names.
+> The API/JSON surface is unchanged (lowercase values: `healthy`, `http`, `raw_text`).
+> Migration `l1m2n3o4p5q6` renamed the original lowercase labels (they made every
+> proxy list/stats/insert fail with `invalid input value for enum proxy_health_status_enum: "HEALTHY"`);
+> if you write raw SQL against these tables, use the uppercase labels.
 
 ### Health Metrics
 
@@ -557,6 +567,10 @@ Proxy credentials are **always masked** in these records and in worker logs — 
 | `proxy_retries` | int | 3 | Max distinct proxies tried per fetch before falling back to a direct request (clamped to 1–5). App-owned: the worker reads it from the raw `fetch_options` before fetching and never passes it to the Scrapling fetcher constructor. |
 
 Each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option.
+
+Rotation only *reads* the pool: a proxy that fails during a fetch is skipped for the rest of **that** fetch, but its `health` is not changed — dropping it from the pool for later jobs is the validation task's job (or a manual `health` change / delete).
+
+> Verified end-to-end on real PostgreSQL + Redis + Celery (`docker compose`, three manual proxies: one closed port, two forward proxies — one with basic auth): jobs show `result_summary.proxy.attempts` with the dead proxy failing and the next one succeeding, the target server sees the request coming from the proxy's IP, and with every proxy dead the job succeeds with `fell_back_direct: true`, `fallback_reason: "all_proxy_attempts_failed"`.
 
 > If no healthy proxy is available, the request proceeds without a proxy — the fallback is flagged as `fell_back_direct: true` with `fallback_reason: "no_healthy_proxy_available"`.
 
