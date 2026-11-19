@@ -41,3 +41,49 @@ jobs:
       # integration-marked tests skip unless PILGRIM_RUN_INTEGRATION=1.
       - name: Pytest
         run: uv run pytest -q
+
+  # Real-PostgreSQL gate: SQLite (unit suite) stores enums as VARCHAR, so
+  # enum label drift between the alembic migrations and the SQLAlchemy models
+  # (e.g. proxy_health_status_enum "HEALTHY" vs "healthy") is invisible there.
+  integration:
+    name: integration (postgres + alembic head)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pilgrim
+          POSTGRES_PASSWORD: pilgrim
+          POSTGRES_DB: pilgrim
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pilgrim"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://pilgrim:pilgrim@localhost:5432/pilgrim
+      REDIS_URL: redis://localhost:6379/0
+      PILGRIM_RUN_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies (locked)
+        run: uv sync --locked --extra dev --python 3.12
+
+      - name: Alembic upgrade head (fresh database)
+        run: uv run alembic upgrade head
+
+      - name: Integration tests (real PostgreSQL)
+        run: uv run pytest -q tests/test_integration_postgres.py

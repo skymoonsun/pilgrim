@@ -506,6 +506,8 @@ Every proxied job records its proxy story in `result_summary.proxy` (visible in 
 
 Note: each proxied attempt is a single Scrapling request, which may retry internally per Scrapling's own `retries` fetch option. Proxy health is owned by the validation task; rotation only *reads* the pool and never mutates proxy health.
 
+> PostgreSQL stores the proxy enums (`proxy_health_status_enum`, `proxy_protocol_enum`, `proxy_format_type_enum`) as the Python member **names** (`HEALTHY`, `HTTP`, `RAW_TEXT`, …); the API still speaks lowercase values. Run `alembic upgrade head` (migration `l1m2n3o4p5q6`) on existing databases — before it, `GET /api/v1/proxies/stats` and every proxy insert returned 500. Regression tests: `PILGRIM_RUN_INTEGRATION=1 pytest tests/test_integration_postgres.py` against a migrated Postgres.
+
 ### AI-powered proxy source analysis
 
 When AI is enabled (`PILGRIM_AI_ENABLED=true`), the "New Proxy Source" page shows an **AI Analysis** panel. Paste a proxy list URL and click **Analyze** — Pilgrim will:
