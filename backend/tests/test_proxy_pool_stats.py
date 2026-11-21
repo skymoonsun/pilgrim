@@ -1,10 +1,14 @@
 """Proxy pool polish tests — /proxies/stats payload + weighted selection."""
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_async_session
+from app.main import app
 from app.models.enums import ProxyHealthStatus, ProxyProtocol
 from app.models.valid_proxy import ValidProxy
 from app.services.proxy_pool_stats import success_weight
@@ -177,3 +181,70 @@ class TestPoolStats:
         assert picked is not None
         assert picked.ip == "203.0.113.10"
         assert picked.success_count == 4
+
+
+class TestPoolStatsRouter:
+    """The HTTP endpoint itself: GET /api/v1/proxies/stats (read-open)."""
+
+    @pytest.fixture
+    async def client(
+        self, db_session: AsyncSession
+    ) -> AsyncIterator[AsyncClient]:
+        """Async HTTP client over the real app with the SQLite session."""
+
+        async def _override_session() -> AsyncIterator[AsyncSession]:
+            yield db_session
+
+        app.dependency_overrides[get_async_session] = _override_session
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as async_client:
+                yield async_client
+        finally:
+            app.dependency_overrides.pop(get_async_session, None)
+
+    async def test_stats_endpoint_serves_the_pool_snapshot(
+        self, client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """No token needed (read-open); the route serves the service dict."""
+        now = datetime.now(UTC)
+        await seed(
+            db_session,
+            make_proxy(ip="203.0.113.10"),
+            make_proxy(
+                ip="203.0.113.11", health=ProxyHealthStatus.UNHEALTHY
+            ),
+            make_proxy(ip="203.0.113.12", expires_at=now + timedelta(minutes=5)),
+        )
+        response = await client.get("/api/v1/proxies/stats")
+        assert response.status_code == 200
+        assert response.json() == {
+            "total": 3,
+            "healthy": 2,
+            "unhealthy": 1,
+            "expiring_soon": 1,
+            "ttl_window_seconds": 3600,
+        }
+
+    async def test_stats_endpoint_honours_the_ttl_window_query(
+        self, client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """The window bound is inclusive; the query param is forwarded."""
+        now = datetime.now(UTC)
+        await seed(
+            db_session,
+            make_proxy(ip="203.0.113.10", expires_at=now + timedelta(seconds=30)),
+        )
+        response = await client.get(
+            "/api/v1/proxies/stats", params={"ttl_window_seconds": 60}
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "total": 1,
+            "healthy": 1,
+            "unhealthy": 0,
+            "expiring_soon": 1,
+            "ttl_window_seconds": 60,
+        }

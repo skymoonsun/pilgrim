@@ -358,6 +358,31 @@ curl "http://localhost:8000/api/v1/proxies/?source_id={uuid}&health=degraded"
 curl "http://localhost:8000/api/v1/proxies/?health=unhealthy"
 ```
 
+### Pool Snapshot (`GET /proxies/stats`)
+
+One call reports how the pool is doing: totals, health split, and how
+many proxies fall inside the `ttl_window_seconds` query parameter
+(default 3600, bounds 60–86400):
+
+```json
+{
+  "total": 1,
+  "healthy": 1,
+  "unhealthy": 0,
+  "expiring_soon": 1,
+  "ttl_window_seconds": 3600
+}
+```
+
+> **Verified evidence (2026-11-21, port-isolated e2e stack at `:8011` —
+> real PostgreSQL + Redis + Celery; test row inserted directly in SQL).**
+> `GET /api/v1/proxies/stats` → `HTTP 200` with
+> `{"total":1,"healthy":1,"unhealthy":0,"expiring_soon":1,"ttl_window_seconds":3600}`
+> for a seeded healthy proxy with a 5-minute TTL, and an empty pool
+> (`{"total":0,...}`) after cleanup — both tokenless (`read-open` auth
+> mode). Before the enum-casing alignment (`l1m2n3o4p5q6`), this exact
+> read was the `/proxies/stats` → 500 regression on real PostgreSQL.
+
 ---
 
 ## Manual Proxies
@@ -627,6 +652,7 @@ Rotation only *reads* the pool: a proxy that fails during a fetch is skipped for
 | `POST` | `/api/v1/proxies/` | Add a single manual proxy |
 | `POST` | `/api/v1/proxies/bulk` | Bulk-add manual proxies from raw text |
 | `GET` | `/api/v1/proxies/` | List proxies (with filters) |
+| `GET` | `/api/v1/proxies/stats` | Pool snapshot: totals, health split, TTL outlook |
 | `GET` | `/api/v1/proxies/{id}` | Get proxy by ID |
 | `DELETE` | `/api/v1/proxies/{id}` | Delete a proxy |
 | `POST` | `/api/v1/proxies/{source_id}/validate` | Trigger validation for a source |
