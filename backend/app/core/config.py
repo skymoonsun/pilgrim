@@ -6,7 +6,7 @@ All env vars are documented in `.env.example`.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import AliasChoices, Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Built-in placeholder used when ``PILGRIM_JWT_SECRET`` is not configured.
@@ -80,6 +80,25 @@ class Settings(BaseSettings):
     auth_mode: Literal["read-open", "strict"] = Field(
         default="read-open",
         validation_alias="PILGRIM_AUTH_MODE",
+    )
+
+    # ── Seed user (core → pilgrim dispatch credentials) ─────────
+    # PILGRIM_USERNAME/PILGRIM_PASSWORD ayarlıysa startup'ta idempotent
+    # seed edilir (app.core.bootstrap.ensure_seed_user).  Değerleri core
+    # .env ile senkron tut — core bunları login için kullanıyor.
+    seed_username: str | None = Field(
+        default=None,
+        # Kullanıcının .env'indeki adlar core'la birebir aynı: aynı isimler
+        # her iki tarafta tek-kaynak olur.
+        validation_alias=AliasChoices(
+            "PILGRIM_SEED_USERNAME", "PILGRIM_USERNAME"
+        ),
+    )
+    seed_password: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "PILGRIM_SEED_PASSWORD", "PILGRIM_PASSWORD"
+        ),
     )
     # Change this in any multi-user / exposed deployment.  Secrets shorter
     # than ``MIN_JWT_SECRET_BYTES`` are rejected outright (HS256 security);

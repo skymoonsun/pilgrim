@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Fail loudly on secret hygiene before serving any traffic: the
     # default JWT placeholder warns (read-open) or aborts (strict).
     guard_jwt_secret(settings)
+    # Env-tanımlı seed kullanıcıyı idempotent yarat (byte-realm parity).
+    from app.core.bootstrap import ensure_seed_user
+
+    await ensure_seed_user()
     yield
     # Shutdown: dispose DB engine pool
     from app.db.database import engine
