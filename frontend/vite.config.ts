@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    allowedHosts: ['pilgrim.keytickr.com', '.keytickr.com'], // prod subdomain üzerinden erişim
     watch: {
       usePolling: true, // Docker volume mount compatibility
     },
