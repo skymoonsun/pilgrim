@@ -343,10 +343,10 @@ All configuration is managed via environment variables. See [`.env.example`](.en
 The seeded [`trustpilot-trust-score`](docs/crawl-configs.md#trustpilot-seller-trust-score-domain--score-json)
 config collects a merchant's TrustScore + review count from
 `https://www.trustpilot.com/review/<domain>` and publishes the domain → score document
-c4game-core assigns to sellers (seller badges). ToS discipline: **one request per review
+keytickr-core assigns to sellers (seller badges). ToS discipline: **one request per review
 page per run, runs ≥ 6 hours apart** (daily is the safe cadence), `robots.txt`-respecting
 stealth fetch. **Degrade plan:** live scraping stays env-gated and never breaks a page —
-if Trustpilot refuses the traffic, c4game-core's admin manual endpoint
+if Trustpilot refuses the traffic, keytickr-core's admin manual endpoint
 (`POST /api/admin/sellers/{id}/trust`) keeps the badges current by hand (documented in
 core's README trust section).
 
