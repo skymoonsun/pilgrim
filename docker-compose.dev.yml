@@ -8,9 +8,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: pilgrim
-      POSTGRES_PASSWORD: pilgrim
-      POSTGRES_DB: pilgrim
+      POSTGRES_USER: ${POSTGRES_USER:-pilgrim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pilgrim}
+      POSTGRES_DB: ${POSTGRES_DB:-pilgrim}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
