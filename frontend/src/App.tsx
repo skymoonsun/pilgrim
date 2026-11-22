@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
+import RequireAuth from './components/layout/RequireAuth';
+import Login from './pages/Login/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
 import Configurations from './pages/Configurations/Configurations';
 import ConfigCreate from './pages/Configurations/ConfigCreate';
@@ -23,7 +25,9 @@ import './App.css';
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppLayout />}>
+      <Route path="/login" element={<Login />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<AppLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="configurations" element={<Configurations />} />
         <Route path="configurations/new" element={<ConfigCreate />} />
@@ -42,6 +46,7 @@ export default function App() {
         <Route path="proxy-sources/:id/edit" element={<ProxySourceEdit />} />
         <Route path="proxies" element={<Proxies />} />
         <Route path="settings" element={<Settings />} />
+        </Route>
       </Route>
     </Routes>
   );

@@ -1,6 +1,10 @@
-import { IconSearch, IconBell } from '../icons/Icons';
+import { IconSearch, IconBell, IconLogout } from '../icons/Icons';
+import { useNavigate } from 'react-router-dom';
+import { logout } from '../../api/auth';
 
 export default function Header() {
+  const navigate = useNavigate();
+
   return (
     <header className="header">
       <div className="header-search">
@@ -16,6 +20,16 @@ export default function Header() {
           <span className="header-profile-name">Admin Profile</span>
           <div className="header-profile-avatar">AP</div>
         </div>
+        <button
+          className="btn-ghost"
+          title="Sign out"
+          onClick={() => {
+            logout();
+            navigate('/login', { replace: true });
+          }}
+        >
+          <IconLogout size={18} />
+        </button>
       </div>
     </header>
   );

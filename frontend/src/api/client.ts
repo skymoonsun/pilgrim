@@ -289,10 +289,21 @@ export interface SpecVerificationResponse {
 // ── Generic fetch helper ─────────────────────────────────
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+  const { getToken, clearToken } = await import('./auth');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    // Oturum süresi doldu/geçersiz — token'ı temizle ve login'e at.
+    clearToken();
+    window.location.assign('/login');
+    throw new Error('Session expired');
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);
