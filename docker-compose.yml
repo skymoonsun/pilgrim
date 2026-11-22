@@ -12,7 +12,7 @@ services:
       target: api
     env_file: .env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8011:8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/liveness"]
