@@ -12,7 +12,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://api:8000',
+        target: 'http://pilgrim-api-1:8000',
         changeOrigin: true,
       },
     },
