@@ -103,6 +103,8 @@ services:
       - api
     ports:
       - "127.0.0.1:3011:3000"
+    networks:
+      - keytickr-core-net
 
 volumes:
   pgdata:
