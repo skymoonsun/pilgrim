@@ -18,7 +18,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/liveness', timeout=3)""
+          python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/liveness', timeout=3)
       interval: 30s
       timeout: 10s
       retries: 3
