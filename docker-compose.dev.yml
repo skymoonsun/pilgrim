@@ -53,6 +53,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8011:8000"
+    networks:
+      - keytickr-core-net
 
   # ── Celery Worker ────────────────────────────────────────────
   worker:
@@ -105,3 +107,8 @@ services:
 volumes:
   pgdata:
   redisdata:
+
+networks:
+  keytickr-core-net:
+    external: true
+    name: keytickr-core-net
