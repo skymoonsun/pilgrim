@@ -53,6 +53,7 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8011:8000"
+      - "172.17.0.1:8011:8000"
 
   # ── Celery Worker ────────────────────────────────────────────
   worker:
@@ -101,6 +102,7 @@ services:
       - api
     ports:
       - "127.0.0.1:3011:3000"
+      - "172.17.0.1:3011:3000"
 
 volumes:
   pgdata:
