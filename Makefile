@@ -115,3 +115,26 @@ prod-down: ## Production stack'i durdur
 clean: ## Docker cache ve dangling image'ları temizle
 	docker system prune -f
 	docker volume prune -f
+
+# ── PROD (uniform interface — dev compose file is the single one here) ──
+COMPOSE_PROD = docker compose -f docker-compose.dev.yml
+prod-build: ## Build + start (api :8011)
+	$(COMPOSE_PROD) up -d --build
+
+prod-up: ## Start without rebuilding
+	$(COMPOSE_PROD) up -d
+
+prod-down: ## Stop (keep volumes)
+	$(COMPOSE_PROD) down
+
+prod-logs: ## Follow all logs
+	$(COMPOSE_PROD) logs -f --tail=200
+
+prod-ps: ## Status
+	$(COMPOSE_PROD) ps
+
+prod-restart: ## Restart all
+	$(COMPOSE_PROD) restart
+
+migrate-prod: ## Apply migrations in prod
+	$(COMPOSE_PROD) exec api alembic upgrade head
