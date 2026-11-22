@@ -52,7 +52,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8011:8000"
 
   # ── Celery Worker ────────────────────────────────────────────
   worker:
@@ -100,7 +100,7 @@ services:
     depends_on:
       - api
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3011:3000"
 
 volumes:
   pgdata:
