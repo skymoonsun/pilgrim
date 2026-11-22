@@ -900,13 +900,25 @@ class AIService:
     async def _check_provider_reachable(self) -> bool:
         """Lightweight reachability check for the configured provider.
 
-        For Ollama, hits ``GET /api/tags`` which is cheap and does
-        not load a model.
+        Ollama hits ``GET /api/tags`` which is cheap and does not load
+        a model. OpenAI-compatible endpoints probe ``GET /models``.
         """
         settings = get_settings()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                headers: dict[str, str] = {}
+                if settings.llm_provider == "openai-compatible":
+                    headers: dict[str, str] = {}
+                    if settings.llm_api_key:
+                        headers["Authorization"] = (
+                            f"Bearer {settings.llm_api_key}"
+                        )
+                    base = settings.llm_base_url.rstrip("/")
+                    resp = await client.get(
+                        f"{base}/models",
+                        headers=headers,
+                    )
+                    return resp.status_code == 200
+                headers = {}
                 if settings.ollama_token:
                     headers["Authorization"] = (
                         f"Bearer {settings.ollama_token}"
