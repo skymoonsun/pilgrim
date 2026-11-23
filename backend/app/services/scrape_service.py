@@ -11,7 +11,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CrawlingError
 from app.schemas.crawl import ScrapeResponse
 from app.services.crawl_config_service import CrawlConfigService
 
@@ -38,13 +37,16 @@ class ScrapeService:
 
         # 2. Fetch page (lazy imports to avoid crash on slim API image)
         try:
-            from app.crawlers.factory import create_fetcher
             from app.crawlers.extraction import extract_data
+            from app.crawlers.factory import create_fetcher, fetch_off_loop
 
-            response = create_fetcher(
+            fetcher = create_fetcher(
                 profile=config.scraper_profile,
                 fetch_options=config.fetch_options or {},
-            ).get(url)
+            )
+            # Browser profiles drive the sync Playwright API — always
+            # offload onto a loop-free thread (see ``fetch_off_loop``).
+            response = await fetch_off_loop(fetcher, url)
         except ImportError as exc:
             logger.error(
                 "Scrapling dependencies not available: %s. "

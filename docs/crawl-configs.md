@@ -402,15 +402,37 @@ Seed `0003_trustpilot_trust_score` registers the `trustpilot-trust-score` config
 target URL is `https://www.trustpilot.com/review/<domain>`
 (`app.services.trust_scores.trustpilot_review_url`). The page sits behind an AWS WAF bot
 challenge — a plain `fetcher` gets a 403 interstitial — so the config uses the `stealth`
-profile (needs the **worker** image with browser dependencies). Scores are read from the
-embedded `__NEXT_DATA__` (`json_path` fields), then
-`app.services.trust_scores.build_trust_scores()` turns the per-domain results into the
+profile (needs the **worker** image with browser dependencies). The spec reads scores
+from three tiers in precedence order — JSON-LD first (`ld_match` picks the `Product`
+block and its `aggregateRating`), then the embedded `__NEXT_DATA__` `businessUnit`
+(`*_nd` fallback fields), then DOM data-attributes (`*_css`, tolerant last resort) —
+and `app.services.trust_scores.build_trust_scores()` turns the per-domain results into the
 document c4game-core consumes (see `docs/examples/trustpilot-trust-scores.json`, captured
 from real pages; unusable pages are listed under `failed`, never invented).
 
 The only real-network test is double-gated:
 `PILGRIM_RUN_INTEGRATION=1 PILGRIM_TRUSTPILOT_LIVE=1 pytest tests/test_trust_scores.py -k live`
 (optional `PILGRIM_TRUSTPILOT_CHROME=/path/to/chrome`, `PILGRIM_TRUSTPILOT_DOMAIN=...`).
+
+#### Weekly schedule & callback delivery (seed 0004)
+
+`0004_trustpilot_trust_weekly` creates the `trustpilot-trust-scores-weekly` schedule
+(`cron 0 4 * * 1`, UTC — Monday 04:00, a 7-day cadence) linked to the 0003 config, with
+one URL target per domain from `PILGRIM_TRUSTPILOT_DOMAINS` (comma-separated, default
+`kinguin.net`). The schedule rows inactive by default — and crawling is gated again at
+trigger time: while `PILGRIM_RUN_TRUSTPILOT` is not `1`, both the Celery Beat poller and
+the manual `POST /schedules/{id}/trigger` return zero jobs and leave the schedule's
+tracking fields untouched (`trustpilot crawl gated — set PILGRIM_RUN_TRUSTPILOT=1 to
+enable`). Delivery waits on a `CallbackConfig` with `field_mapping = {"transform":
+"trust_scores"}` (mutually exclusive with the per-row field mapping), `batch_results =
+False`, `POST` and exactly one header `X-Webhook-Secret: {{WEBHOOK_SECRET}}` — the
+double-brace placeholder is stored literally in the DB and resolved from the environment
+at dispatch time; unset/empty env drops the header (with a warning, the secret is never
+logged). `PILGRIM_TRUST_CALLBACK_URL` empty (default) parks the callback as inactive.
+`PILGRIM_TRUSTPILOT_STAGGER_SECONDS` (default 30) jitters each Trustpilot job 0-30 s
+before its fetcher starts. The delivered payload is the trust document itself:
+`source`, `scale`, `crawled_at` (ISO), `scores` keyed by domain (each with
+`score`/`reviews`/`stars`/`name`/`url`), and the `failed` list.
 
 #### ToS discipline & the degrade path
 

@@ -362,3 +362,25 @@ def create_fetcher(
         )
 
     return _adapter_class(profile)(base_options)
+
+
+async def fetch_off_loop(fetcher: Any, url: str, **kwargs: Any) -> Any:
+    """Await a scrapling sync fetch from async code.
+
+    Browser profiles drive Patchright's **sync** API, and Playwright
+    hard-fails when the calling thread already runs an asyncio event loop
+    (``using the Playwright Sync API inside the asyncio loop``) — which is
+    exactly the situation in the Celery worker task (``asyncio.run``) and
+    in the API's async scrape path.  Running the sync ``fetcher.get`` in
+    the loop's default executor (a plain thread with no loop) lets the
+    browser profiles behave like every other profile.
+
+    Static profiles are loop-agnostic, so offloading them is harmless.
+    """
+    import asyncio
+    import functools
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, functools.partial(fetcher.get, url, **kwargs)
+    )

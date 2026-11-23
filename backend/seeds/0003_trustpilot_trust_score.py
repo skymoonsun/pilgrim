@@ -29,8 +29,11 @@ async def run(session: AsyncSession) -> None:
             description=(
                 "Trustpilot business rating for one seller domain "
                 "(target URL: https://www.trustpilot.com/review/<domain>). "
-                "Reads trustScore / numberOfReviews / stars from the "
-                "embedded __NEXT_DATA__."
+                "Prefers the JSON-LD Product block (aggregateRating), "
+                "falls back to the embedded __NEXT_DATA__ businessUnit "
+                "(trustScore / numberOfReviews / stars), then to DOM "
+                "data-attributes. Output feeds the domain → score "
+                "document via the trust_scores callback transform."
             ),
             scraper_profile=ScraperProfile.STEALTH,
             is_active=True,

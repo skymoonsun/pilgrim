@@ -36,6 +36,14 @@ class CallbackConfig(Base, UUIDMixin, TimestampMixin):
     - ``$.metadata.*``  — job_id, schedule_id, timestamp, http_status, duration_ms
     - ``static_fields`` — constant fields added to every payload
     - ``wrap_key``      — wrap the mapped result under this key (null = flat)
+
+    A top-level ``"transform": "trust_scores"`` REPLACES the per-row
+    mapping: the whole result set becomes one trust document
+    (``app.services.trust_scores``) — transform and ``field_mapping``
+    are mutually exclusive.  Header values shaped like
+    ``{{ENV_NAME}}`` resolve from the environment at dispatch time
+    (unset/empty → header dropped); secrets are stored as the literal
+    placeholder in this table, never as plain text.
     """
 
     __tablename__ = "callback_configs"

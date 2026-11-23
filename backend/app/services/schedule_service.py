@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.exceptions import ConfigNotFoundError, ScheduleNotFoundError, ProxySourceNotFoundError
 from app.models.callback_config import CallbackConfig
 from app.models.crawl_config import CrawlConfiguration
@@ -274,6 +275,25 @@ class ScheduleService:
 
     async def _trigger_crawl(self, schedule: CrawlSchedule) -> list[CrawlJob]:
         """Create CrawlJobs for every (config_link → urls) pair."""
+        # ToS gate — Celery Beat and the manual API trigger both share
+        # this path: tos-sensitive Trustpilot review-page crawling must
+        # never fire just because a tick (or a click) says so.  When the
+        # gate holds, the schedule is left untouched (no job, no
+        # last_run_at/next_run_at bump) so activation later reuses the
+        # original cadence.
+        settings = get_settings()
+        if not settings.run_trustpilot and any(
+            link.config is not None
+            and link.config.name == settings.trustpilot_config_name
+            for link in schedule.config_links
+        ):
+            logger.warning(
+                "trustpilot crawl gated — set PILGRIM_RUN_TRUSTPILOT=1 to enable "
+                "(schedule %s)",
+                schedule.id,
+            )
+            return []
+
         jobs: list[CrawlJob] = []
 
         for link in schedule.config_links:

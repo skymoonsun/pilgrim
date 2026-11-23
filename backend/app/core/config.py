@@ -152,6 +152,28 @@ class Settings(BaseSettings):
         validation_alias="PILGRIM_SCRAPLING_BROWSER_INSTALL",
     )
 
+    # ── Trustpilot trust-score collection ────────────────────────
+    # Real trustpilot.com review-page crawling is ToS-sensitive: it must
+    # only run on the weekly schedule when explicitly enabled, never as
+    # a side effect of a beat tick or a manual API trigger.
+    run_trustpilot: bool = Field(
+        default=False,
+        validation_alias="PILGRIM_RUN_TRUSTPILOT",
+    )
+    # Politeness jitter (seconds) applied before each Trustpilot job's
+    # fetcher starts; 0 disables.  Capped at 30 s per job at the call
+    # site so the capped window stays meaningful.
+    trustpilot_stagger_seconds: float = Field(
+        default=30.0,
+        ge=0.0,
+        validation_alias="PILGRIM_TRUSTPILOT_STAGGER_SECONDS",
+    )
+    # Which CrawlConfiguration the Trustpilot gating/stagger applies to.
+    trustpilot_config_name: str = Field(
+        default="trustpilot-trust-score",
+        validation_alias="PILGRIM_TRUSTPILOT_CONFIG_NAME",
+    )
+
     # ── SMTP ──────────────────────────────────────────────────────
     smtp_host: str = Field(
         default="localhost",
