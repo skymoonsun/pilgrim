@@ -124,6 +124,26 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                     lambda s: job.crawl_configuration
                 )
 
+                # 3b. Politeness stagger for Trustpilot review pages:
+                # random jitter before the fetcher is even created.
+                # ``crawl_default`` is a SERIAL queue (prefetch 1) — jobs
+                # never run concurrently — and the weekly schedule keeps
+                # runs ≥ 7 days apart, so run spacing already satisfies
+                # the ToS minimum of 6 hours; the jitter only spaces out
+                # repeated/overlapping triggers within one window.
+                if (
+                    getattr(config, "name", None) == settings.trustpilot_config_name
+                    and settings.trustpilot_stagger_seconds > 0
+                ):
+                    import random
+
+                    await asyncio.sleep(
+                        random.uniform(
+                            0.0,
+                            min(settings.trustpilot_stagger_seconds, 30.0),
+                        )
+                    )
+
                 # 4. Fetch (through the healthy proxy pool when configured)
                 # Strip app-owned keys (``proxy_retries``) so they never
                 # reach the strict-kwargs Scrapling constructor; the raw

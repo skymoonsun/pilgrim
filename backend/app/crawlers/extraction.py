@@ -21,6 +21,11 @@ page.
 * ``type`` — ``"css"`` (default), ``"xpath"``, or ``"json_path"``
 * ``source`` — for ``json_path`` type: ``"next_data"`` or ``"json_ld"``
   (which embedded data source to resolve against)
+* ``ld_match`` — optional ``{"key": ..., "value": ...}`` for
+  ``source: "json_ld"``: resolve against the first JSON-LD block whose
+  top-level ``[key]`` equals ``[value]`` (e.g.
+  ``{"key": "@type", "value": "Product"}``).  Falls back to block 0
+  when absent or when no block matches.
 * ``multiple`` — if ``true`` return a list; otherwise first match only
 
 ## CSS pseudo-elements
@@ -119,6 +124,29 @@ def _normalise_css_selector(selector: str) -> str:
     return f"{selector}::text"
 
 
+def _select_json_ld_block(
+    json_ld: list[dict] | None,
+    ld_match: Any,
+) -> dict | None:
+    """Pick the JSON-LD block a ``json_path`` field resolves against.
+
+    ``ld_match`` (``{"key": ..., "value": ...}``) selects the first block
+    whose top-level ``[key]`` equals ``[value]``; without it — or without
+    a match — the first block is used (the historical behaviour).
+    """
+    if not json_ld:
+        return None
+    blocks = [block for block in json_ld if isinstance(block, dict)]
+    if not blocks:
+        return None
+    if isinstance(ld_match, dict) and isinstance(ld_match.get("key"), str):
+        wanted = ld_match.get("value")
+        for block in blocks:
+            if block.get(ld_match["key"]) == wanted:
+                return block
+    return blocks[0]
+
+
 def assess_value_quality(value: Any) -> Literal["good", "html", "empty", "none"]:
     """Assess the quality of an extracted value.
 
@@ -207,8 +235,11 @@ def extract_data(
                 if source == "next_data":
                     source_data = next_data
                 elif source == "json_ld":
-                    # For JSON-LD, use the first item (or merge list)
-                    source_data = json_ld[0] if json_ld else None
+                    # For JSON-LD, honour the optional ld_match block
+                    # selector (falls back to the first block).
+                    source_data = _select_json_ld_block(
+                        json_ld, spec.get("ld_match")
+                    )
                 else:
                     source_data = next_data
 
@@ -291,7 +322,10 @@ def extract_data_with_metadata(
                 if source == "next_data":
                     source_data = next_data
                 elif source == "json_ld":
-                    source_data = json_ld[0] if json_ld else None
+                    # Same ld_match semantics as extract_data().
+                    source_data = _select_json_ld_block(
+                        json_ld, spec.get("ld_match")
+                    )
                 else:
                     source_data = next_data
 

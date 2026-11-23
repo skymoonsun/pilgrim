@@ -1,8 +1,25 @@
-"""Callback execution service — field mapping, HTTP dispatch, logging."""
+"""Callback execution service — field mapping, HTTP dispatch, logging.
+
+Delivery modes (mutually exclusive, chosen by ``field_mapping``):
+
+* ``{"transform": "trust_scores"}`` — the whole result set is folded
+  into the Trustpilot trust document (``app.services.trust_scores``):
+  per-domain ``scores``, a ``failed`` list, and a ``crawled_at``
+  timestamp.  The per-row field-mapping / static-fields / wrap-key
+  machinery does not apply in this mode.
+* otherwise — the classic per-row ``$.data.*`` field mapping below.
+
+Header values that are exactly a ``{{ENV_NAME}}`` placeholder resolve
+from ``os.environ`` at dispatch time; when the variable is unset or
+empty the header is dropped (with a warning) — never a crash, and the
+resolved secret is never logged.
+"""
 
 import logging
+import os
+import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -12,8 +29,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.callback_config import CallbackConfig
 from app.models.callback_log import CallbackLog
+from app.services.trust_scores import (
+    build_trust_record,
+    build_trust_scores,
+    domain_from_review_url,
+)
 
 logger = logging.getLogger(__name__)
+
+#: A header value that is *exactly* this shape (two opening braces, an
+#: uppercase/underscore name, two closing braces) is an environment
+#: placeholder, e.g. ``{{WEBHOOK_SECRET}}`` — stored literally in the
+#: DB, resolved at callback dispatch.
+_ENV_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z_][A-Z0-9_]*)\}\}")
+
+#: ``field_mapping["transform"]`` value that folds crawl results into a
+#: trust document instead of running the per-row field mapping.
+TRUST_SCORES_TRANSFORM = "trust_scores"
 
 
 class CallbackService:
@@ -112,8 +144,22 @@ class CallbackService:
         results: list[dict],
         metadata: dict | None,
     ) -> dict[str, Any]:
-        """Apply field_mapping to transform extraction results."""
+        """Apply field_mapping to transform extraction results.
+
+        The ``transform`` key and per-row mapping are mutually exclusive:
+        when ``field_mapping["transform"] == "trust_scores"`` the whole
+        result set is folded into one trust document (per-domain scores,
+        ``failed``, ``crawled_at``) — static_fields, wrap_key and the
+        per-row mapping are ignored.  For the classic mode the document
+        assembly below applies unchanged.
+        """
         mapping_spec = config.field_mapping or {}
+        if mapping_spec.get("transform") == TRUST_SCORES_TRANSFORM:
+            document = _build_trust_document(results)
+            if config.batch_results:
+                return {"results": document}
+            return document
+
         field_map = mapping_spec.get("field_mapping", {})
         static_fields = mapping_spec.get("static_fields", {})
         wrap_key = mapping_spec.get("wrap_key")
@@ -178,8 +224,14 @@ class CallbackService:
 
         try:
             headers = {"Content-Type": "application/json"}
-            if config.headers:
-                headers.update(config.headers)
+            for header_name, header_value in (config.headers or {}).items():
+                resolved = resolve_env_placeholder(header_value)
+                if resolved is None:
+                    # Placeholders with unset/empty env are dropped —
+                    # the logged warning names the env var, never the
+                    # resolved secret.
+                    continue
+                headers[header_name] = str(resolved)
 
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.request(
@@ -241,6 +293,83 @@ class CallbackService:
         self.session.add(log)
         await self.session.commit()
         return log
+
+
+# ── Trust-document transform ─────────────────────────────────────
+
+
+def _build_trust_document(results: list[dict]) -> dict[str, Any]:
+    """Fold per-job crawl results into one Trustpilot trust document.
+
+    Rows whose ``url`` is a Trustpilot review URL are grouped by the
+    seller domain embedded in the path; per domain the first *usable*
+    extraction wins (an earlier unusable row — e.g. a blocked
+    interstitial — never poisons the domain: a later row for the same
+    URL supplies the numbers).  Domains with no usable row end up in the
+    document's ``failed`` list; rows without a review URL cannot be
+    keyed and are skipped.  The document gains the top-level
+    ``crawled_at`` dispatch timestamp (UTC ISO).
+    """
+    rows_by_domain: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        domain = domain_from_review_url(str(result.get("url", "")))
+        if domain is None:
+            logger.debug("Callback result without a review URL — skipped")
+            continue
+        data = result.get("data")
+        rows_by_domain.setdefault(domain, []).append(
+            data if isinstance(data, dict) else {}
+        )
+
+    extracted_by_domain = {
+        domain: _first_usable(domain, rows)
+        for domain, rows in rows_by_domain.items()
+    }
+
+    document = build_trust_scores(extracted_by_domain)
+    document["crawled_at"] = datetime.now(UTC).isoformat()
+    return document
+
+
+def _first_usable(
+    domain: str,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The first extraction row that yields a score (else the first row
+    so ``build_trust_scores`` reports the domain under ``failed``)."""
+    for row in rows:
+        try:
+            build_trust_record(domain, row)
+        except ValueError:
+            continue
+        return row
+    return rows[0]
+
+
+# ── Env placeholders ─────────────────────────────────────────────
+
+
+def resolve_env_placeholder(value: Any) -> Any:
+    """Resolve a ``{{ENV_NAME}}`` header value from ``os.environ``.
+
+    A value that is exactly a double-brace placeholder returns the
+    environment value at dispatch time; when the variable is unset or
+    empty the return is ``None`` and the caller must DROP the header
+    (with a warning that names the env var — never the resolved secret).
+    Any other value passes through unchanged.
+    """
+    if isinstance(value, str):
+        if match := _ENV_PLACEHOLDER_RE.fullmatch(value):
+            resolved = os.environ.get(match.group(1), "")
+            if not resolved:
+                logger.warning(
+                    "Callback header placeholder %s: env unset or empty "
+                    "— dropping header",
+                    match.group(1),
+                )
+                return None
+            return resolved
+    return value
 
 
 # ── Path resolver ────────────────────────────────────────────────

@@ -393,6 +393,84 @@ class TestExtractDataJsonPath:
         assert result == {"name": None}
 
 
+class TestJsonLdMatch:
+    """``ld_match`` — pick the JSON-LD block by a top-level key/value."""
+
+    _SPEC = {"fields": {
+        "rating": {
+            "selector": "aggregateRating.ratingValue",
+            "type": "json_path",
+            "source": "json_ld",
+            "ld_match": {"key": "@type", "value": "Product"},
+        },
+    }}
+
+    def _json_ld(self) -> list[dict[str, Any]]:
+        return [
+            {"@type": "BreadcrumbList", "name": "crumbs"},
+            {
+                "@type": "Product",
+                "aggregateRating": {"ratingValue": 4.6, "reviewCount": 100},
+            },
+            {"@type": "Product", "aggregateRating": {"ratingValue": 1.1}},
+        ]
+
+    def test_matches_the_first_block_with_the_value(self) -> None:
+        result = extract_data(
+            _FakePage("<html></html>"),
+            self._SPEC,
+            json_ld=self._json_ld(),
+        )
+        assert result == {"rating": 4.6}  # the FIRST Product, not the last
+
+    def test_no_matching_block_falls_back_to_block_0(self) -> None:
+        json_ld = [{"name": "First"}, {"@type": "Person", "name": "Ada"}]
+        result = extract_data(
+            _FakePage("<html></html>"),
+            self._SPEC,
+            json_ld=json_ld,
+        )
+        assert result == {"rating": None}
+
+    def test_without_ld_match_the_first_block_wins(self) -> None:
+        spec = {"fields": {
+            "name": {"selector": "name", "type": "json_path", "source": "json_ld"},
+        }}
+        result = extract_data(
+            _FakePage("<html></html>"),
+            spec,
+            json_ld=self._json_ld(),
+        )
+        assert result == {"name": "crumbs"}  # block 0 — backward compatible
+
+    def test_metadata_variant_honours_ld_match(self) -> None:
+        results = extract_data_with_metadata(
+            _FakePage("<html></html>"),
+            self._SPEC,
+            json_ld=self._json_ld(),
+        )
+        assert len(results) == 1
+        assert results[0].value == 4.6
+        assert results[0].match_count == 1
+
+    def test_non_string_match_key_behaves_as_no_match(self) -> None:
+        spec = {"fields": {
+            "rating": {
+                "selector": "aggregateRating.ratingValue",
+                "type": "json_path",
+                "source": "json_ld",
+                "ld_match": {"key": 42, "value": "Product"},
+            },
+        }}
+        result = extract_data(
+            _FakePage("<html></html>"),
+            spec,
+            json_ld=self._json_ld(),
+        )
+        # Malformed ld_match degrades to block 0 — no crash, no match.
+        assert result == {"rating": None}
+
+
 class TestExtractDataRobustness:
     def test_missing_fields_key_returns_empty_dict(self) -> None:
         assert extract_data(_title_page(), {}) == {}
