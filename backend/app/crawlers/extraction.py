@@ -124,6 +124,13 @@ def _normalise_css_selector(selector: str) -> str:
     return f"{selector}::text"
 
 
+# Flatten ``@graph`` containers (any depth, capped) — each typed node
+# becomes a candidate block; the container itself stays first so the
+# no-ld_match fallback keeps seeing the original root document.
+# Schema.org graphs are flat; 4 levels is already generous.
+_MAX_GRAPH_DEPTH = 4
+
+
 def _select_json_ld_block(
     json_ld: list[dict] | None,
     ld_match: Any,
@@ -131,20 +138,48 @@ def _select_json_ld_block(
     """Pick the JSON-LD block a ``json_path`` field resolves against.
 
     ``ld_match`` (``{"key": ..., "value": ...}``) selects the first block
-    whose top-level ``[key]`` equals ``[value]``; without it — or without
-    a match — the first block is used (the historical behaviour).
+    whose ``[key]`` — at the top level OR inside a ``@graph`` container —
+    equals ``[value]``; the returned block is the MATCHING NODE itself, so
+    the ``json_path`` selector resolves against it directly.  Real-world
+    schema.org documents commonly wrap their typed nodes in a ``@graph``
+    (Trustpilot review pages do: a ``LocalBusiness`` node carries the
+    ``aggregateRating``), so a top-level-only match would never see them.
+    Without ``ld_match`` — or without a match — the first block is used
+    (the historical behaviour, where ``@graph`` containers are flattened
+    to their first useful node).
+
+    The ``@graph`` walk is recursive with a depth cap (schema.org graphs
+    are flat; 4 levels is already generous) and skips nested ``@graph``
+    containers themselves as match candidates — a container without its
+    own ``@type`` is never a useful extraction root.
     """
     if not json_ld:
         return None
-    blocks = [block for block in json_ld if isinstance(block, dict)]
-    if not blocks:
+
+    flat: list[dict] = []
+
+    def _flatten(block: dict, depth: int) -> None:
+        flat.append(block)
+        graph = block.get("@graph")
+        if depth < _MAX_GRAPH_DEPTH and isinstance(graph, list):
+            for node in graph:
+                if isinstance(node, dict):
+                    _flatten(node, depth + 1)
+
+    for block in json_ld:
+        if isinstance(block, dict):
+            _flatten(block, 0)
+    if not flat:
         return None
+
     if isinstance(ld_match, dict) and isinstance(ld_match.get("key"), str):
         wanted = ld_match.get("value")
-        for block in blocks:
+        for block in flat:
             if block.get(ld_match["key"]) == wanted:
                 return block
-    return blocks[0]
+        # Fall through to the historical first-block behaviour.
+        return flat[0]
+    return flat[0]
 
 
 def assess_value_quality(value: Any) -> Literal["good", "html", "empty", "none"]:

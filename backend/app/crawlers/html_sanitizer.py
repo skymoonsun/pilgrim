@@ -207,15 +207,21 @@ _USEFUL_JSON_LD_TYPES: frozenset[str] = frozenset(
         "WebPage",
         "BreadcrumbList",
         "ItemList",
+        "LocalBusiness",
     }
 )
 
 
 def _extract_json_ld(tree: lxml_html.HtmlElement) -> list[dict]:
-    """Extract useful JSON-LD structured data from ``<script type="application/ld+json">`` tags.
+    """Extract useful JSON-LD structured data from ``ld+json`` script tags.
 
     Only keeps types in ``_USEFUL_JSON_LD_TYPES`` (Product, Offer, etc.)
-    to avoid flooding the LLM context with Review data.
+    to avoid flooding the LLM context with Review data.  Documents that
+    wrap their nodes in a ``@graph`` container (schema.org practice —
+    Trustpilot review pages ship one ``LocalBusiness`` node carrying the
+    ``aggregateRating``) are walked one level deep: each *useful* graph
+    node is kept as its own block instead of dropping the whole
+    document because its root has no ``@type``.
     """
     results: list[dict] = []
     for script in tree.iter("script"):
@@ -227,15 +233,34 @@ def _extract_json_ld(tree: lxml_html.HtmlElement) -> list[dict]:
             continue
         try:
             data = json.loads(text)
-            if isinstance(data, list):
-                for item in data:
-                    if _is_useful_json_ld(item):
-                        results.append(item)
-            else:
-                if _is_useful_json_ld(data):
-                    results.append(data)
         except (json.JSONDecodeError, TypeError):
             continue
+        roots: list[dict] = []
+        if isinstance(data, dict):
+            roots.append(data)
+        elif isinstance(data, list):
+            roots.extend(item for item in data if isinstance(item, dict))
+        for root_item in roots:
+            if _is_useful_json_ld(root_item):
+                results.append(root_item)
+                continue
+            # ``@graph`` container (root has no useful ``@type``):
+            # keep each typed, useful node as its own block.
+            graph = root_item.get("@graph")
+            if not isinstance(graph, list):
+                continue
+            for node in graph:
+                if not isinstance(node, dict):
+                    continue
+                if _is_useful_json_ld(node):
+                    results.append(node)
+                elif isinstance(node.get("@graph"), list):
+                    results.extend(
+                        item
+                        for item in node["@graph"]
+                        if isinstance(item, dict)
+                        and _is_useful_json_ld(item)
+                    )
     return results
 
 

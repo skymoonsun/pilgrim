@@ -1,12 +1,16 @@
 """Seller trust scores collected from Trustpilot review pages.
 
 Trustpilot renders ``https://www.trustpilot.com/review/<domain>`` as a
-Next.js page.  The rating is embedded twice: a JSON-LD ``Product`` block
-(``aggregateRating``) and the ``__NEXT_DATA__`` payload under
-``props.pageProps.businessUnit`` (``trustScore`` 0-5, ``numberOfReviews``,
-``stars`` = rounded half-star value).  The page sits behind an AWS WAF
-bot challenge: plain HTTP (``fetcher`` profile) gets a 403 interstitial,
-a real browser engine (``stealth`` profile) gets the page.
+Next.js page.  The rating is embedded twice: a JSON-LD ``@graph``
+document whose ``LocalBusiness`` node carries ``aggregateRating``
+(the *primary* read — first-party schema.org data), and the
+``__NEXT_DATA__`` payload under ``props.pageProps.businessUnit``
+(``trustScore`` 0-5, ``numberOfReviews``, ``stars`` = rounded half-star
+value) as the fallback.  Both were verified on the live kinguin.net
+page (2026-11-23: ratingValue 4.6 / reviewCount 126143 on both tiers).
+The page sits behind an AWS WAF bot challenge: plain HTTP (``fetcher``
+profile) gets a 403 interstitial, a real browser engine (``stealth``
+profile) gets the page.
 
 This module is the recipe + the glue:
 
@@ -41,25 +45,26 @@ TRUST_SCALE = 5
 
 #: ``extraction_spec`` of the ``trustpilot-trust-score`` crawl config.
 #:
-#: JSON-LD primary (extractor picks the ``Product`` block via
-#: ``ld_match``), ``__NEXT_DATA__`` fallback fields (``*_nd``), and
-#: CSS-attribute last resorts (``*_css`` — exact Trustpilot attributes
-#: may need adjusting as the page evolves; kept tolerant on purpose).
-#: :func:`build_trust_record` consumes all three tiers via precedence.
+#: JSON-LD primary (extractor picks the ``LocalBusiness`` node of the
+#: ``@graph`` document via ``ld_match``), ``__NEXT_DATA__`` fallback
+#: fields (``*_nd``), and CSS-attribute last resorts (``*_css`` — exact
+#: Trustpilot attributes may need adjusting as the page evolves; kept
+#: tolerant on purpose).  :func:`build_trust_record` consumes all three
+#: tiers via precedence.
 TRUSTPILOT_EXTRACTION_SPEC: dict[str, Any] = {
     "fields": {
-        # ── Primary: JSON-LD aggregateRating (Product block) ──────
+        # ── Primary: JSON-LD aggregateRating (@graph LocalBusiness) ──
         "trust_score": {
             "selector": "aggregateRating.ratingValue",
             "type": "json_path",
             "source": "json_ld",
-            "ld_match": {"key": "@type", "value": "Product"},
+            "ld_match": {"key": "@type", "value": "LocalBusiness"},
         },
         "review_count": {
             "selector": "aggregateRating.reviewCount",
             "type": "json_path",
             "source": "json_ld",
-            "ld_match": {"key": "@type", "value": "Product"},
+            "ld_match": {"key": "@type", "value": "LocalBusiness"},
         },
         # ── Fallback: __NEXT_DATA__ businessUnit ──────────────────
         "trust_score_nd": {

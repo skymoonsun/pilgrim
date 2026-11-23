@@ -85,7 +85,7 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
 
         from app.core.config import get_settings
         from app.crawlers.extraction import extract_data
-        from app.crawlers.factory import create_fetcher
+        from app.crawlers.factory import create_fetcher, fetch_off_loop
         from app.models.crawl_job_result import CrawlJobResult
         from app.models.enums import CrawlJobStatus
         from app.models.valid_proxy import ValidProxy
@@ -154,6 +154,12 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                     strip_app_owned_keys(config.fetch_options or {}),
                 )
                 if config.use_proxy:
+                    # NOTE: the rotation callback runs *synchronously inside
+                    # the coroutine*, so browser profiles + ``use_proxy``
+                    # still hit the Playwright sync-in-loop wall
+                    # (``fetch_off_loop`` cannot help there without making
+                    # ``fetch_with_proxy_rotation`` await the callable).
+                    # No shipped config combines that pair today.
                     proxy_report = ProxyRotationReport()
                     proxy_service = ValidProxyService(session)
 
@@ -176,7 +182,9 @@ def run_crawl_job(self, crawl_job_id: str) -> dict[str, str]:
                         report=proxy_report,
                     )
                 else:
-                    response = fetcher.get(job.target_url)
+                    # Browser profiles (stealth/dynamic) MUST run off the
+                    # loop — see ``factory.fetch_off_loop``.
+                    response = await fetch_off_loop(fetcher, job.target_url)
                 http_status = getattr(response, "status", None)
 
                 # 5. Extract

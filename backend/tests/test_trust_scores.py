@@ -41,22 +41,31 @@ KINGUIN = UNITS["kinguin.net"]
 
 
 def _json_ld(unit: dict[str, Any]) -> list[dict[str, Any]]:
-    """Product block as a real review page embeds it (fixture-derived).
+    """@graph container as a real review page embeds it (fixture-derived).
 
-    The non-matching ``BreadcrumbList`` block first is deliberate: it
-    proves ``ld_match`` picks the ``Product`` block instead of block 0.
+    Mirrors the live kinguin.net page (2026-11-23): one ld+json document
+    whose ``@graph`` wraps non-rating nodes (Organization/WebPage) plus
+    the ``LocalBusiness`` node carrying ``aggregateRating``.  The walk in
+    ``_select_json_ld_block`` must flatten the graph and ``ld_match`` pick
+    the LocalBusiness node — not the container, not block 0.
     """
     return [
-        {"@type": "BreadcrumbList", "itemListElement": []},
         {
-            "@type": "Product",
-            "name": unit.get("displayName", ""),
-            "aggregateRating": {
-                "@type": "AggregateRating",
-                "ratingValue": unit["trustScore"],
-                "reviewCount": unit["numberOfReviews"],
-                "bestRating": 5,
-            },
+            "@context": "https://schema.org",
+            "@graph": [
+                {"@type": "BreadcrumbList", "itemListElement": []},
+                {"@type": "WebPage", "name": unit.get("displayName", "")},
+                {
+                    "@type": "LocalBusiness",
+                    "name": unit.get("displayName", ""),
+                    "aggregateRating": {
+                        "@type": "AggregateRating",
+                        "ratingValue": unit["trustScore"],
+                        "reviewCount": unit["numberOfReviews"],
+                        "bestRating": 5,
+                    },
+                },
+            ],
         },
     ]
 
@@ -122,7 +131,7 @@ class TestRecipe:
             "selector": "aggregateRating.ratingValue",
             "type": "json_path",
             "source": "json_ld",
-            "ld_match": {"key": "@type", "value": "Product"},
+            "ld_match": {"key": "@type", "value": "LocalBusiness"},
         }
         assert fields["trust_score_nd"]["source"] == "next_data"
         assert fields["trust_score_css"]["type"] == "css"
@@ -371,3 +380,108 @@ def test_live_trustpilot_review_page() -> None:
     record = build_trust_record(domain, extracted)
     assert 0 < record["score"] <= 5
     assert record["reviews"] and record["reviews"] > 0
+
+
+# ── @graph JSON-LD (real Trustpilot page shape, 2026-11-23) ────────────
+# Live capture: the review page's ld+json is a ``@graph`` document whose
+# ``LocalBusiness`` node carries the aggregateRating; ``Review`` nodes
+# carry per-review ratings that must never win.  next_data is seeded with
+# a DIFFERENT score (4.9) so the test proves the JSON-LD tier precedence.
+
+_REAL_GRAPH_DOC = {
+    "@context": "https://schema.org",
+    "@graph": [
+        {
+            "@type": "Organization",
+            "@id": "https://www.trustpilot.com/#/schema/Organization/1",
+            "name": "Trustpilot",
+        },
+        {
+            "@type": "WebPage",
+            "@id": "https://www.trustpilot.com/review/kinguin.net",
+            "name": "Kinguin.net Reviews",
+        },
+        {
+            "@type": "LocalBusiness",
+            "@id": "https://www.trustpilot.com/#/schema/Organization/kinguin.net",
+            "name": "Kinguin.net",
+            "aggregateRating": {
+                "@type": "AggregateRating",
+                "bestRating": "5",
+                "worstRating": "1",
+                "ratingValue": "4.6",
+                "reviewCount": "126143",
+            },
+        },
+        {"@type": "Review", "reviewRating": {"@type": "Rating", "ratingValue": "5"}},
+        {"@type": "Review", "reviewRating": {"@type": "Rating", "ratingValue": "3"}},
+    ],
+}
+
+_REAL_PAGE_HTML = (
+    "<html><head><title>Kinguin.net Reviews</title>"
+    '<script type="application/ld+json" data-business-unit-json-ld="true">'
+    + json.dumps(_REAL_GRAPH_DOC)
+    + "</script>"
+    '<script id="__NEXT_DATA__" type="application/json">'
+    + json.dumps(
+        {
+            "props": {
+                "pageProps": {
+                    "businessUnit": {
+                        "trustScore": 4.9,  # stale/sibling copy — must NOT win
+                        "numberOfReviews": 99999,
+                        "stars": 5.0,
+                        "displayName": "Kinguin.net",
+                        "identifyingName": "kinguin.net",
+                    }
+                }
+            }
+        }
+    )
+    + "</script></head><body><main></main></body></html>"
+)
+
+
+class _CssStubResponse:
+    """Response stand-in for extract_data's css/xpath surface."""
+
+    def css(self, selector: str, **kwargs: Any) -> "list[Any]":  # noqa: D102
+        return []
+
+    def xpath(self, selector: str, **kwargs: Any) -> "list[Any]":  # noqa: D102
+        return []
+
+
+@pytest.mark.integration
+def test_real_page_graph_json_ld_primary_over_next_data() -> None:
+    """@graph LocalBusiness aggregateRating wins over next_data + Reviews."""
+    from app.crawlers.html_sanitizer import sanitize_html
+
+    sanitized = sanitize_html(_REAL_PAGE_HTML)
+    data = extract_data(
+        _CssStubResponse(),
+        TRUSTPILOT_EXTRACTION_SPEC,
+        next_data=sanitized.next_data,
+        json_ld=sanitized.json_ld,
+    )
+    # Provenance: the *primary* (JSON-LD) tier won — 4.6/126143 — with the
+    # next_data stale copy (4.9/99999) untouched and the Reviews' 5.0/3.0
+    # never picked up.
+    assert data["trust_score"] == pytest.approx(4.6)
+    assert data["review_count"] == 126143
+    record = build_trust_record("kinguin.net", data)
+    assert record["score"] == pytest.approx(4.6)
+    assert record["reviews"] == 126143
+    assert record["name"] == "Kinguin.net"
+
+
+def test_graph_container_flattened_by_sanitizer() -> None:
+    """The @graph LocalBusiness node survives _extract_json_ld type filtering."""
+    from app.crawlers.html_sanitizer import sanitize_html
+
+    sanitized = sanitize_html(_REAL_PAGE_HTML)
+    types = [block.get("@type") for block in (sanitized.json_ld or [])]
+    assert "LocalBusiness" in types
+    # And the review nodes did not flood the result.
+    assert types.count("Review") == 0
