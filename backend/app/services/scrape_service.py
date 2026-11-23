@@ -11,7 +11,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CrawlingError
 from app.schemas.crawl import ScrapeResponse
 from app.services.crawl_config_service import CrawlConfigService
 
@@ -38,8 +37,8 @@ class ScrapeService:
 
         # 2. Fetch page (lazy imports to avoid crash on slim API image)
         try:
-            from app.crawlers.factory import create_fetcher, fetch_off_loop
             from app.crawlers.extraction import extract_data
+            from app.crawlers.factory import create_fetcher, fetch_off_loop
 
             fetcher = create_fetcher(
                 profile=config.scraper_profile,
