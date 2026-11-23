@@ -12,7 +12,10 @@ services:
       target: api
     env_file: .env
     ports:
+      # host + docker-bridge gateway (byte-realm pool reaches pilgrim
+      # through host.docker.internal → host-gateway = 172.17.0.1)
       - "127.0.0.1:8011:8000"
+      - "172.17.0.1:8011:8000"
     restart: unless-stopped
     healthcheck:
       test:
